@@ -5,6 +5,7 @@ Main entry point for the pharmacy billing and inventory desktop application.
 """
 
 import sys
+from decimal import Decimal
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -23,6 +24,8 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QDateEdit,
     QDoubleSpinBox,
+    QFileDialog,
+    QTextEdit,
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QFont
@@ -38,6 +41,7 @@ from desktop_app.models import (
 from desktop_app.sales import SalesTransaction
 from desktop_app.inventory import BatchManager, InventoryAlerts
 from desktop_app.reports import SalesReporter, InventoryReporter
+from desktop_app.product_manager import ProductImportExporter
 
 
 # --- Login Dialog -----------------------------------------------
@@ -291,6 +295,24 @@ class MainWindow(QMainWindow):
         receipt_layout.addWidget(receipt_btn)
         layout.addLayout(receipt_layout)
 
+        # Bulk expiry controls
+        expiry_layout = QHBoxLayout()
+        expiry_layout.addWidget(QLabel("Store ID:"))
+        self.expiry_store_input = QLineEdit()
+        self.expiry_store_input.setPlaceholderText("Leave empty for primary store")
+        expiry_layout.addWidget(self.expiry_store_input)
+
+        expiry_layout.addWidget(QLabel("Expire within (days):"))
+        self.expiry_days_input = QSpinBox()
+        self.expiry_days_input.setRange(1, 3650)
+        self.expiry_days_input.setValue(30)
+        expiry_layout.addWidget(self.expiry_days_input)
+
+        expiry_btn = QPushButton("Expire Batches Within Days")
+        expiry_btn.clicked.connect(self.expire_batches_action)
+        expiry_layout.addWidget(expiry_btn)
+        layout.addLayout(expiry_layout)
+
         # Stock view
         layout.addWidget(QLabel("Current Stock"))
         self.inventory_table = QTableWidget()
@@ -310,15 +332,252 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(QLabel("Product Catalog"))
 
+        # Control buttons
+        button_layout = QHBoxLayout()
+        
+        create_btn = QPushButton("+ New Product")
+        create_btn.clicked.connect(self.show_create_product_dialog)
+        button_layout.addWidget(create_btn)
+
+        import_btn = QPushButton("Import Products")
+        import_btn.clicked.connect(self.show_import_dialog)
+        button_layout.addWidget(import_btn)
+
+        export_btn = QPushButton("Export to CSV")
+        export_btn.clicked.connect(self.export_products_csv)
+        button_layout.addWidget(export_btn)
+
+        template_btn = QPushButton("Export to JSON")
+        template_btn.clicked.connect(self.export_products_json)
+        button_layout.addWidget(template_btn)
+
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.clicked.connect(self.load_products_table)
+        button_layout.addWidget(refresh_btn)
+
+        layout.addLayout(button_layout)
+
+        # Products table
         self.products_table = QTableWidget()
-        self.products_table.setColumnCount(6)
+        self.products_table.setColumnCount(7)
         self.products_table.setHorizontalHeaderLabels(
-            ["ID", "Name", "SKU", "Cost Price", "Selling Price", "Status"]
+            ["ID", "Name", "SKU", "Generic Name", "Cost Price", "Selling Price", "Status"]
         )
+        self.products_table.setColumnWidth(1, 150)
         layout.addWidget(self.products_table)
+
+        # Load products on startup
+        self.load_products_table()
 
         widget.setLayout(layout)
         return widget
+
+    def load_products_table(self) -> None:
+        """Load and display all products in the table."""
+        try:
+            products = self.product_service.get_all_products(active_only=False)
+            self.products_table.setRowCount(len(products))
+
+            for i, product in enumerate(products):
+                self.products_table.setItem(i, 0, QTableWidgetItem(str(product["id"])))
+                self.products_table.setItem(i, 1, QTableWidgetItem(product["name"]))
+                self.products_table.setItem(i, 2, QTableWidgetItem(product["sku"]))
+                self.products_table.setItem(i, 3, QTableWidgetItem(product.get("generic_name", "")))
+                self.products_table.setItem(i, 4, QTableWidgetItem(f"₦{product['cost_price']}"))
+                self.products_table.setItem(i, 5, QTableWidgetItem(f"₦{product['selling_price']}"))
+                status = "Active" if product.get("is_active") else "Inactive"
+                self.products_table.setItem(i, 6, QTableWidgetItem(status))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load products: {str(e)}")
+
+    def show_create_product_dialog(self) -> None:
+        """Show dialog to create a new product."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Create New Product")
+        dialog.setGeometry(200, 200, 500, 400)
+
+        layout = QVBoxLayout()
+
+        # Name
+        layout.addWidget(QLabel("Product Name:"))
+        name_input = QLineEdit()
+        layout.addWidget(name_input)
+
+        # Generic Name
+        layout.addWidget(QLabel("Generic Name (Optional):"))
+        generic_input = QLineEdit()
+        layout.addWidget(generic_input)
+
+        # SKU
+        layout.addWidget(QLabel("SKU:"))
+        sku_input = QLineEdit()
+        layout.addWidget(sku_input)
+
+        # Barcode
+        layout.addWidget(QLabel("Barcode (Optional):"))
+        barcode_input = QLineEdit()
+        layout.addWidget(barcode_input)
+
+        # NAFDAC Number
+        layout.addWidget(QLabel("NAFDAC Number:"))
+        nafdac_input = QLineEdit()
+        layout.addWidget(nafdac_input)
+
+        # Cost Price
+        layout.addWidget(QLabel("Cost Price:"))
+        cost_input = QDoubleSpinBox()
+        cost_input.setMinimum(0)
+        cost_input.setMaximum(999999.99)
+        cost_input.setDecimals(2)
+        layout.addWidget(cost_input)
+
+        # Selling Price
+        layout.addWidget(QLabel("Selling Price:"))
+        selling_input = QDoubleSpinBox()
+        selling_input.setMinimum(0)
+        selling_input.setMaximum(999999.99)
+        selling_input.setDecimals(2)
+        layout.addWidget(selling_input)
+
+        # Description
+        layout.addWidget(QLabel("Description (Optional):"))
+        description_input = QTextEdit()
+        description_input.setMaximumHeight(80)
+        layout.addWidget(description_input)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        def create_product():
+            try:
+                if not name_input.text().strip():
+                    QMessageBox.warning(dialog, "Validation", "Product name is required")
+                    return
+                if not sku_input.text().strip():
+                    QMessageBox.warning(dialog, "Validation", "SKU is required")
+                    return
+                if not nafdac_input.text().strip():
+                    QMessageBox.warning(dialog, "Validation", "NAFDAC number is required")
+                    return
+
+                product = self.product_service.create_product(
+                    name=name_input.text().strip(),
+                    sku=sku_input.text().strip(),
+                    cost_price=Decimal(str(cost_input.value())),
+                    selling_price=Decimal(str(selling_input.value())),
+                    nafdac_number=nafdac_input.text().strip(),
+                    generic_name=generic_input.text().strip(),
+                    barcode=barcode_input.text().strip(),
+                    description=description_input.toPlainText().strip(),
+                )
+                QMessageBox.information(dialog, "Success", f"Product created: {product['name']}")
+                self.load_products_table()
+                dialog.accept()
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Failed to create product: {str(e)}")
+
+        create_btn = QPushButton("Create")
+        create_btn.clicked.connect(create_product)
+        button_layout.addWidget(create_btn)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(cancel_btn)
+
+        layout.addLayout(button_layout)
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def show_import_dialog(self) -> None:
+        """Show dialog to import products."""
+        file_filter = "CSV Files (*.csv);;JSON Files (*.json);;All Files (*.*)"
+        filepath, selected_filter = QFileDialog.getOpenFileName(
+            self, "Import Products", "", file_filter
+        )
+
+        if not filepath:
+            return
+
+        try:
+            exporter = ProductImportExporter(self.db_path)
+            
+            # Validate file first
+            file_format = "csv" if filepath.endswith(".csv") else "json"
+            is_valid, errors = exporter.validate_file(filepath, file_format)
+            
+            if not is_valid:
+                error_msg = "Validation errors:\n\n" + "\n".join(errors[:10])
+                if len(errors) > 10:
+                    error_msg += f"\n... and {len(errors) - 10} more errors"
+                QMessageBox.warning(self, "Validation Failed", error_msg)
+                return
+
+            # Ask to update existing
+            reply = QMessageBox.question(
+                self,
+                "Update Existing?",
+                "Update products if SKU already exists?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            update_existing = reply == QMessageBox.Yes
+
+            # Import
+            if file_format == "csv":
+                imported_count, errors = exporter.import_from_csv(filepath, update_existing)
+            else:
+                imported_count, errors = exporter.import_from_json(filepath, update_existing)
+
+            # Show results
+            msg = f"Imported: {imported_count} products\n"
+            if errors:
+                msg += f"\nErrors: {len(errors)}\n"
+                msg += "\n".join(errors[:5])
+                if len(errors) > 5:
+                    msg += f"\n... and {len(errors) - 5} more errors"
+
+            QMessageBox.information(self, "Import Complete", msg)
+            self.load_products_table()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Import failed: {str(e)}")
+
+    def export_products_csv(self) -> None:
+        """Export products to CSV file."""
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Products", "products.csv", "CSV Files (*.csv)"
+        )
+
+        if not filepath:
+            return
+
+        try:
+            exporter = ProductImportExporter(self.db_path)
+            success, message = exporter.export_to_csv(filepath)
+            if success:
+                QMessageBox.information(self, "Export Success", message)
+            else:
+                QMessageBox.warning(self, "Export Failed", message)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Export failed: {str(e)}")
+
+    def export_products_json(self) -> None:
+        """Export products to JSON file."""
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Products", "products.json", "JSON Files (*.json)"
+        )
+
+        if not filepath:
+            return
+
+        try:
+            exporter = ProductImportExporter(self.db_path)
+            success, message = exporter.export_to_json(filepath)
+            if success:
+                QMessageBox.information(self, "Export Success", message)
+            else:
+                QMessageBox.warning(self, "Export Failed", message)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Export failed: {str(e)}")
 
     def create_reports_tab(self) -> QWidget:
         """Create reports tab."""
@@ -394,6 +653,33 @@ class MainWindow(QMainWindow):
     def receive_stock(self) -> None:
         """Receive stock into inventory."""
         QMessageBox.information(self, "Stock", "Stock received (demo)")
+
+    def expire_batches_action(self) -> None:
+        """UI action to expire batches within given days for selected store."""
+        try:
+            days = int(self.expiry_days_input.value())
+            store_text = self.expiry_store_input.text().strip()
+            if store_text:
+                try:
+                    store_id = int(store_text)
+                except ValueError:
+                    QMessageBox.warning(self, "Input Error", "Store ID must be an integer")
+                    return
+            else:
+                store = self.store_service.get_primary_store()
+                if not store:
+                    QMessageBox.warning(self, "Store Error", "No primary store configured")
+                    return
+                store_id = store["id"]
+
+            inv_service = InventoryService(self.session)
+            # Use current user id if available, otherwise 0
+            user_id = getattr(self.user_session, "user_id", 0)
+            expired_count = inv_service.expire_batches_within_days(store_id, days, user_id)
+            QMessageBox.information(self, "Expiry Result", f"Expired {expired_count} batches")
+            inv_service.session.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to expire batches: {str(e)}")
 
     def generate_report(self) -> None:
         """Generate selected report."""

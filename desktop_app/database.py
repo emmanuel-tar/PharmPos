@@ -289,6 +289,58 @@ inventory_audit = Table(
 )
 
 
+# --- New/Additive Tables for Inventory Features ------------------------------
+suppliers = Table(
+    "suppliers",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String, nullable=False),
+    Column("contact", String),
+    Column("address", Text),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
+purchase_receipts = Table(
+    "purchase_receipts",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "supplier_id",
+        Integer,
+        ForeignKey("suppliers.id", ondelete="SET NULL", onupdate="CASCADE"),
+    ),
+    Column("store_id", Integer, ForeignKey("stores.id", ondelete="RESTRICT")),
+    Column("receipt_number", String, nullable=False, unique=True),
+    Column("total_amount", Numeric(10, 2), server_default=text("0")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
+purchase_receipt_items = Table(
+    "purchase_receipt_items",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("receipt_id", Integer, ForeignKey("purchase_receipts.id", ondelete="CASCADE")),
+    Column("product_id", Integer, ForeignKey("products.id", ondelete="RESTRICT")),
+    Column("batch_number", String, nullable=False),
+    Column("expiry_date", Date),
+    Column("quantity", Integer, server_default=text("0")),
+    Column("cost_price", Numeric(10, 2)),
+)
+
+stock_reservations = Table(
+    "stock_reservations",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("product_id", Integer, ForeignKey("products.id", ondelete="RESTRICT")),
+    Column("store_id", Integer, ForeignKey("stores.id", ondelete="RESTRICT")),
+    Column("quantity", Integer, nullable=False),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="SET NULL")),
+    Column("reserved_until", DateTime),
+    Column("status", String, server_default=text("'active'")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
+
 # --- Required Indexes --------------------------------------------------------
 Index(
     "idx_product_batches_store_expiry",
@@ -307,8 +359,24 @@ Index("idx_products_sku_barcode", products.c.sku, products.c.barcode)
 
 # --- Engine / Initialization -------------------------------------------------
 def get_engine(db_path: Optional[str] = None):
-    """Create a SQLite engine with foreign keys enabled."""
-    engine = create_engine(_db_url(db_path), future=True)
+    """Create or return a cached SQLite engine with foreign keys enabled.
+
+    Engines are cached per DB path to allow controlled disposal (required
+    on Windows to release file locks). Use `dispose_engine(db_path)` to
+    free resources when done.
+    """
+    # Simple cache to reuse engines for the same DB path
+    global _ENGINE_CACHE
+    try:
+        _ENGINE_CACHE
+    except NameError:
+        _ENGINE_CACHE = {}
+
+    url = _db_url(db_path)
+    if url in _ENGINE_CACHE:
+        return _ENGINE_CACHE[url]
+
+    engine = create_engine(url, future=True)
 
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):  # noqa: ANN001
@@ -316,7 +384,42 @@ def get_engine(db_path: Optional[str] = None):
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
+    _ENGINE_CACHE[url] = engine
     return engine
+
+
+def dispose_engine(db_path: Optional[str] = None) -> None:
+    """Dispose the cached engine for the given DB path (or all engines
+    if db_path is None). This releases file handles on Windows.
+    """
+    global _ENGINE_CACHE
+    try:
+        _ENGINE_CACHE
+    except NameError:
+        _ENGINE_CACHE = {}
+
+    if db_path is None:
+        # Dispose all
+        for eng in list(_ENGINE_CACHE.values()):
+            try:
+                eng.dispose()
+            except Exception:
+                pass
+        _ENGINE_CACHE.clear()
+        return
+
+    url = _db_url(db_path)
+    eng = _ENGINE_CACHE.pop(url, None)
+    if eng:
+        try:
+            eng.dispose()
+        except Exception:
+            pass
+
+
+def dispose_all_engines() -> None:
+    """Convenience: dispose all cached engines."""
+    dispose_engine(None)
 
 
 def init_db(db_path: Optional[str] = None) -> None:
