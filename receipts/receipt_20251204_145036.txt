@@ -1,0 +1,21 @@
+Main Pharmacy
+Lagos, Nigeria
+-
+Receipt #: RCP-1-20251204145033-00005
+2025-12-04 14:50:36
+-
+Amoxicillin 250mg
+  1 x 100.00 = 100.00
+Paracetamol 500mg
+  1 x 150.00 = 150.00
+Ibuprofen 400mg
+  1 x 80.00 = 80.00
+-
+Subtotal: 330.00
+Tax: 24.75
+Total: 354.75
+Payment: Cash
+Paid: 354.75
+Change: 0.00
+-
+Thank you for your purchase!

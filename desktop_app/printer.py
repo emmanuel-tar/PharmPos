@@ -5,9 +5,20 @@ Supports USB, Serial, and Network thermal printers.
 """
 
 import socket
-import serial
-import usb.core
-import usb.util
+try:
+    import serial  # pyserial, optional
+    SERIAL_AVAILABLE = True
+except Exception:
+    serial = None
+    SERIAL_AVAILABLE = False
+
+try:
+    import usb.core
+    import usb.util
+    USB_AVAILABLE = True
+except Exception:
+    usb = None
+    USB_AVAILABLE = False
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -98,15 +109,21 @@ class ThermalPrinter:
 
     def _connect_usb(self, vendor_id: int, product_id: int) -> None:
         """Connect to USB thermal printer."""
+        if not USB_AVAILABLE:
+            raise Exception("USB support is not available (pyusb not installed)")
+
         self.connection = usb.core.find(idVendor=vendor_id, idProduct=product_id)
         if self.connection is None:
             raise Exception(f"USB Printer (VID: {hex(vendor_id)}, PID: {hex(product_id)}) not found")
-        
+
         self.connection.set_configuration()
         self.is_connected = True
 
     def _connect_serial(self, port: str, baudrate: int) -> None:
         """Connect to Serial thermal printer."""
+        if not SERIAL_AVAILABLE:
+            raise Exception("Serial support is not available (pyserial not installed)")
+
         self.connection = serial.Serial(
             port=port,
             baudrate=baudrate,

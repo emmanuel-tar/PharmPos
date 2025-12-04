@@ -4,9 +4,11 @@ PharmaPOS NG - Configuration Settings
 Centralized configuration for the application.
 """
 
+import json
+import os
 from pathlib import Path
 from decimal import Decimal
-from typing import Final
+from typing import Final, Optional, Dict, Any
 
 # --- File Paths ---
 PROJECT_ROOT: Final[Path] = Path(__file__).parent.parent
@@ -130,6 +132,85 @@ def get_config() -> dict:
     }
 
 
+# --- Printer Configuration (Persistent) ---
+CONFIG_FILE: Final[str] = str(PROJECT_ROOT / "config.json")
+
+
+def load_printer_config() -> Dict[str, Any]:
+    """Load printer configuration from config.json, or return defaults."""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                return config.get("printer", _default_printer_config())
+        except Exception as e:
+            print(f"Warning: Failed to load printer config: {e}")
+    
+    return _default_printer_config()
+
+
+def save_printer_config(printer_config: Dict[str, Any]) -> bool:
+    """Save printer configuration to config.json."""
+    try:
+        # Load existing config or create new
+        full_config = {}
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                full_config = json.load(f)
+        
+        full_config["printer"] = printer_config
+        
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(full_config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error saving printer config: {e}")
+        return False
+
+
+def _default_printer_config() -> Dict[str, Any]:
+    """Return default printer configuration."""
+    return {
+        "enabled": False,
+        "type": "FILE",  # FILE, USB, SERIAL, NETWORK
+        "usb": {
+            "vendor_id": "0x04b8",
+            "product_id": "0x0202",
+        },
+        "serial": {
+            "port": "/dev/ttyUSB0",
+            "baudrate": 9600,
+        },
+        "network": {
+            "host": "192.168.1.100",
+            "port": 9100,
+        },
+    }
+
+
+def get_printer_backend() -> Optional[str]:
+    """Get the configured printer backend type (or None if disabled)."""
+    config = load_printer_config()
+    if not config.get("enabled"):
+        return None
+    return config.get("type", "FILE")
+
+
+def get_printer_device_info() -> Optional[Dict[str, Any]]:
+    """Get device-specific printer info based on configured backend."""
+    config = load_printer_config()
+    backend = config.get("type", "FILE")
+    
+    if backend == "USB":
+        return config.get("usb", {})
+    elif backend == "SERIAL":
+        return config.get("serial", {})
+    elif backend == "NETWORK":
+        return config.get("network", {})
+    
+    return None
+
+
 __all__ = [
     "PROJECT_ROOT",
     "DATABASE_PATH",
@@ -141,4 +222,8 @@ __all__ = [
     "LOW_STOCK_THRESHOLD",
     "CURRENCY_SYMBOL",
     "get_config",
+    "load_printer_config",
+    "save_printer_config",
+    "get_printer_backend",
+    "get_printer_device_info",
 ]

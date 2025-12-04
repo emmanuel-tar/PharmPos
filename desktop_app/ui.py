@@ -824,6 +824,20 @@ class MainWindow(QMainWindow):
         self.complete_sale_btn.clicked.connect(self.complete_sale)
         right_layout.addWidget(self.complete_sale_btn)
 
+        # Printer quick actions: Test and Reprint
+        printer_actions_layout = QHBoxLayout()
+        self.printer_test_btn = QPushButton("Printer Test")
+        self.printer_test_btn.setToolTip("Send a small test print to configured printer (or save to file fallback)")
+        self.printer_test_btn.clicked.connect(self.printer_test)
+        printer_actions_layout.addWidget(self.printer_test_btn)
+
+        self.reprint_last_btn = QPushButton("Reprint Last Receipt")
+        self.reprint_last_btn.setToolTip("Reprint the most recent sale receipt")
+        self.reprint_last_btn.clicked.connect(self.reprint_last_receipt)
+        printer_actions_layout.addWidget(self.reprint_last_btn)
+
+        right_layout.addLayout(printer_actions_layout)
+
         # Total amount display
         self.total_amount_label = QLabel("0.00 N")
         self.total_amount_label.setAlignment(Qt.AlignRight)
@@ -1822,6 +1836,95 @@ class MainWindow(QMainWindow):
             inv_service.session.close()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to refresh inventory: {str(e)}")
+
+
+    def printer_test(self) -> None:
+        """Send a small test print using the thermal printer helper (file fallback)."""
+        try:
+            from desktop_app.thermal_printer import ThermalPrinter
+            from datetime import datetime
+
+            printer = ThermalPrinter(backend=None)
+            test_text = (
+                "PRINTER TEST\n"
+                "PharmaPOS Thermal Printer Test\n"
+                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                "------------------------------\n"
+                "This is a test print.\n"
+            )
+            res = printer.print_text(test_text)
+            if res.get('status') == 'printed':
+                QMessageBox.information(self, 'Printer Test', 'Test printed to device successfully.')
+            else:
+                path = res.get('path')
+                QMessageBox.information(self, 'Printer Test', f'Test saved to file: {path}')
+        except Exception as e:
+            QMessageBox.warning(self, 'Printer Test', f'Printer test failed: {e}')
+
+
+    def reprint_last_receipt(self) -> None:
+        """Re-generate and print (or save) the most recent sale receipt."""
+        try:
+            # Local imports to avoid top-level dependencies
+            from desktop_app.models import get_session, SalesService
+            from desktop_app.database import sales as sales_table, sale_items as sale_items_table, product_batches, products
+            from sqlalchemy import select
+            from desktop_app.thermal_printer import ThermalPrinter, format_receipt
+
+            session = get_session()
+            # Fetch most recent sale
+            stmt = select(sales_table).order_by(sales_table.c.created_at.desc())
+            row = session.execute(stmt).fetchone()
+            if not row:
+                QMessageBox.information(self, 'Reprint', 'No sales found to reprint.')
+                return
+
+            sale = dict(row._mapping)
+            sale_id = sale['id']
+
+            # Get sale items
+            sales_service = SalesService(session)
+            items = sales_service.get_sale_items(sale_id)
+
+            # Build printable items list with product names
+            printable_items = []
+            for it in items:
+                # Lookup batch and product
+                batch_row = session.execute(select(product_batches).where(product_batches.c.id == it['product_batch_id'])).fetchone()
+                batch = dict(batch_row._mapping) if batch_row else None
+                prod = None
+                if batch:
+                    prod_row = session.execute(select(products).where(products.c.id == batch['product_id'])).fetchone()
+                    prod = dict(prod_row._mapping) if prod_row else None
+
+                printable_items.append({
+                    'product_name': prod['name'] if prod else f"Batch {batch.get('batch_number') if batch else it['product_batch_id']}",
+                    'quantity': it['quantity'],
+                    'unit_price': float(it['unit_price']),
+                })
+
+            store = self.store_service.get_primary_store()
+            receipt_text = format_receipt(
+                receipt_number=sale['receipt_number'],
+                items=printable_items,
+                subtotal=float(sale.get('total_amount', 0)),
+                tax=0.0,
+                total=float(sale.get('total_amount', 0)),
+                payment_method=sale.get('payment_method', 'Unknown'),
+                amount_paid=float(sale.get('amount_paid', 0)),
+                change=float(sale.get('change_amount', 0)),
+                store=store,
+            )
+
+            printer = ThermalPrinter(backend=None)
+            res = printer.print_text(receipt_text)
+            if res.get('status') == 'printed':
+                QMessageBox.information(self, 'Reprint', 'Receipt sent to printer.')
+            else:
+                QMessageBox.information(self, 'Reprint', f'Receipt saved to: {res.get("path")}')
+
+        except Exception as e:
+            QMessageBox.warning(self, 'Reprint Error', f'Failed to reprint receipt: {e}')
 
     def expire_batches_action(self) -> None:
         """UI action to expire batches within given days for selected store."""
