@@ -47,6 +47,173 @@ from desktop_app.printer import ThermalPrinter, PrinterType, ReceiptGenerator
 from desktop_app.inventory import BatchManager, InventoryAlerts
 from desktop_app.reports import SalesReporter, InventoryReporter
 from desktop_app.product_manager import ProductImportExporter
+from desktop_app.config import load_printer_config, save_printer_config
+
+
+# --- Printer Settings Dialog -----------------------------------------------
+class PrinterSettingsDialog(QDialog):
+    """Dialog to configure thermal printer settings."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Printer Settings")
+        self.setGeometry(200, 200, 600, 500)
+        self.setup_ui()
+        self.load_config()
+
+    def setup_ui(self) -> None:
+        """Setup printer settings UI."""
+        layout = QVBoxLayout()
+
+        # Enable/Disable
+        enable_layout = QHBoxLayout()
+        enable_layout.addWidget(QLabel("Enable Thermal Printer:"))
+        self.enable_checkbox = QLineEdit()
+        self.enable_checkbox.setText("No")
+        enable_layout.addWidget(self.enable_checkbox)
+        layout.addLayout(enable_layout)
+
+        # Printer Type
+        type_layout = QHBoxLayout()
+        type_layout.addWidget(QLabel("Printer Type:"))
+        self.printer_type_combo = QComboBox()
+        self.printer_type_combo.addItems(["FILE", "USB", "SERIAL", "NETWORK"])
+        self.printer_type_combo.currentTextChanged.connect(self.on_printer_type_changed)
+        type_layout.addWidget(self.printer_type_combo)
+        layout.addLayout(type_layout)
+
+        # USB Settings
+        layout.addWidget(QLabel("<b>USB Settings</b>"))
+        usb_layout = QHBoxLayout()
+        usb_layout.addWidget(QLabel("Vendor ID:"))
+        self.usb_vendor_input = QLineEdit()
+        self.usb_vendor_input.setPlaceholderText("e.g., 0x04b8")
+        usb_layout.addWidget(self.usb_vendor_input)
+        usb_layout.addWidget(QLabel("Product ID:"))
+        self.usb_product_input = QLineEdit()
+        self.usb_product_input.setPlaceholderText("e.g., 0x0202")
+        usb_layout.addWidget(self.usb_product_input)
+        layout.addLayout(usb_layout)
+
+        # Serial Settings
+        layout.addWidget(QLabel("<b>Serial Settings</b>"))
+        serial_layout = QHBoxLayout()
+        serial_layout.addWidget(QLabel("Port:"))
+        self.serial_port_input = QLineEdit()
+        self.serial_port_input.setPlaceholderText("e.g., /dev/ttyUSB0 or COM3")
+        serial_layout.addWidget(self.serial_port_input)
+        serial_layout.addWidget(QLabel("Baudrate:"))
+        self.serial_baudrate_input = QSpinBox()
+        self.serial_baudrate_input.setValue(9600)
+        self.serial_baudrate_input.setRange(300, 921600)
+        serial_layout.addWidget(self.serial_baudrate_input)
+        layout.addLayout(serial_layout)
+
+        # Network Settings
+        layout.addWidget(QLabel("<b>Network Settings</b>"))
+        network_layout = QHBoxLayout()
+        network_layout.addWidget(QLabel("Host:"))
+        self.network_host_input = QLineEdit()
+        self.network_host_input.setPlaceholderText("e.g., 192.168.1.100")
+        network_layout.addWidget(self.network_host_input)
+        network_layout.addWidget(QLabel("Port:"))
+        self.network_port_input = QSpinBox()
+        self.network_port_input.setValue(9100)
+        self.network_port_input.setRange(1, 65535)
+        network_layout.addWidget(self.network_port_input)
+        layout.addLayout(network_layout)
+
+        layout.addStretch()
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        save_btn = QPushButton("Save Settings")
+        save_btn.clicked.connect(self.save_config)
+        test_btn = QPushButton("Test Printer")
+        test_btn.clicked.connect(self.test_printer)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addStretch()
+        button_layout.addWidget(save_btn)
+        button_layout.addWidget(test_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+    def load_config(self) -> None:
+        """Load printer configuration from config.json."""
+        config = load_printer_config()
+        self.enable_checkbox.setText("Yes" if config.get("enabled") else "No")
+        self.printer_type_combo.setCurrentText(config.get("type", "FILE"))
+
+        usb_cfg = config.get("usb", {})
+        self.usb_vendor_input.setText(usb_cfg.get("vendor_id", "0x04b8"))
+        self.usb_product_input.setText(usb_cfg.get("product_id", "0x0202"))
+
+        serial_cfg = config.get("serial", {})
+        self.serial_port_input.setText(serial_cfg.get("port", "/dev/ttyUSB0"))
+        self.serial_baudrate_input.setValue(serial_cfg.get("baudrate", 9600))
+
+        network_cfg = config.get("network", {})
+        self.network_host_input.setText(network_cfg.get("host", "192.168.1.100"))
+        self.network_port_input.setValue(network_cfg.get("port", 9100))
+
+    def on_printer_type_changed(self) -> None:
+        """Show/hide relevant settings based on printer type."""
+        printer_type = self.printer_type_combo.currentText()
+        # In a more advanced UI, we'd show/hide groups based on type
+        # For now, all are visible
+
+    def save_config(self) -> None:
+        """Save printer configuration."""
+        config = {
+            "enabled": self.enable_checkbox.text().lower() == "yes",
+            "type": self.printer_type_combo.currentText(),
+            "usb": {
+                "vendor_id": self.usb_vendor_input.text(),
+                "product_id": self.usb_product_input.text(),
+            },
+            "serial": {
+                "port": self.serial_port_input.text(),
+                "baudrate": self.serial_baudrate_input.value(),
+            },
+            "network": {
+                "host": self.network_host_input.text(),
+                "port": self.network_port_input.value(),
+            },
+        }
+        if save_printer_config(config):
+            QMessageBox.information(self, "Success", "Printer settings saved successfully.")
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error", "Failed to save printer settings.")
+
+    def test_printer(self) -> None:
+        """Test printer connection."""
+        try:
+            printer_type = self.printer_type_combo.currentText()
+            device_info = {}
+
+            if printer_type == "USB":
+                device_info = {
+                    "idVendor": int(self.usb_vendor_input.text(), 16),
+                    "idProduct": int(self.usb_product_input.text(), 16),
+                }
+            elif printer_type == "SERIAL":
+                device_info = {
+                    "port": self.serial_port_input.text(),
+                    "baudrate": self.serial_baudrate_input.value(),
+                }
+            elif printer_type == "NETWORK":
+                device_info = {
+                    "host": self.network_host_input.text(),
+                    "port": self.network_port_input.value(),
+                }
+
+            QMessageBox.information(self, "Test", f"Printer test for {printer_type}: Not yet implemented. Please click Save to apply settings.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Printer test failed: {e}")
 
 
 # --- Stock Receiving Dialog -----------------------------------------------
@@ -622,6 +789,9 @@ class MainWindow(QMainWindow):
         user_label = QLabel(f"User: {self.user_session.username} | Role: {self.user_session.role}")
         top_bar.addWidget(user_label)
         top_bar.addStretch()
+        settings_btn = QPushButton("⚙ Printer Settings")
+        settings_btn.clicked.connect(self.open_printer_settings)
+        top_bar.addWidget(settings_btn)
         logout_btn = QPushButton("Logout")
         logout_btn.clicked.connect(self.logout)
         top_bar.addWidget(logout_btn)
@@ -1957,6 +2127,11 @@ class MainWindow(QMainWindow):
         """Generate selected report."""
         report_type = self.report_type.currentText()
         QMessageBox.information(self, "Report", f"Generated {report_type} report (demo)")
+
+    def open_printer_settings(self) -> None:
+        """Open printer settings dialog."""
+        dialog = PrinterSettingsDialog(self)
+        dialog.exec_()
 
     def logout(self) -> None:
         """Logout user."""
