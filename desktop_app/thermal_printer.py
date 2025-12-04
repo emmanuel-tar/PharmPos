@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 
 RECEIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "receipts")
 
@@ -15,31 +15,51 @@ except Exception:
 class ThermalPrinter:
     """Simple thermal printer helper with ESC/POS optional support.
 
-    If an ESC/POS printer is not available or not configured this will
-    fall back to saving a plain-text receipt under `receipts/`.
+    Backends supported:
+      - FILE (fallback, default) : saves plain text receipts under `receipts/`
+      - 'usb' / 'network' / 'serial' : uses python-escpos when available
+      - SYSTEM : uses the system-installed printer via Qt's QPrinter (when running inside a Qt app)
+
+    The `backend` argument may be a string (e.g. 'usb') or a dict with keys
+    `{ 'type': <TYPE>, 'device_info': {...} }`.
     """
 
-    def __init__(self, backend: Optional[str] = None, device_info: Optional[dict] = None):
-        # backend: 'usb', 'network', 'serial' or None
-        self.backend = backend
-        self.device_info = device_info or {}
+    def __init__(self, backend: Optional[Union[str, Dict]] = None, device_info: Optional[dict] = None):
+        # backend: 'usb','network','serial','SYSTEM' or None
+        if isinstance(backend, dict):
+            self.backend_type = backend.get('type')
+            self.device_info = backend.get('device_info', {})
+        else:
+            self.backend_type = backend
+            self.device_info = device_info or {}
 
         self.printer = None
-        if ESC_POS_AVAILABLE and backend:
+        self.system_mode = False
+
+        # ESC/POS init
+        if ESC_POS_AVAILABLE and self.backend_type:
             try:
-                if backend == "usb":
-                    self.printer = Usb(
-                        self.device_info.get("idVendor"),
-                        self.device_info.get("idProduct"),
-                        0,
-                    )
-                elif backend == "network":
-                    self.printer = Network(self.device_info.get("host"))
-                elif backend == "serial":
-                    self.printer = Serial(self.device_info.get("devfile"))
+                bt = str(self.backend_type).lower()
+                if bt == 'usb':
+                    self.printer = Usb(self.device_info.get('idVendor'), self.device_info.get('idProduct'), 0)
+                elif bt == 'network':
+                    self.printer = Network(self.device_info.get('host'))
+                elif bt == 'serial':
+                    self.printer = Serial(self.device_info.get('devfile'))
             except Exception:
-                # If ESC/POS backend init fails, fallback to file mode
                 self.printer = None
+
+        # System printer support via Qt (only when backend_type == 'SYSTEM')
+        if str(self.backend_type).upper() == 'SYSTEM':
+            try:
+                # Delay Qt imports until runtime (app may or may not be running)
+                from PyQt5.QtPrintSupport import QPrinter, QPrinterInfo  # type: ignore
+                from PyQt5.QtGui import QTextDocument  # type: ignore
+                # store the target printer name
+                self.system_printer_name = self.device_info.get('name')
+                self.system_mode = True
+            except Exception:
+                self.system_mode = False
 
         # Ensure receipts dir exists
         os.makedirs(RECEIPTS_DIR, exist_ok=True)
@@ -47,24 +67,45 @@ class ThermalPrinter:
     def print_text(self, text: str) -> dict:
         """Attempt to print plain text; returns info dict with status.
 
-        If ESC/POS is available and printer configured the text will be
-        sent to the device. Otherwise the text is saved to a timestamped
-        file in `receipts/` and the path returned.
+        Priority:
+          1. If system printer requested and Qt printing available -> use system printer
+          2. If ESC/POS available and configured -> send to device
+          3. Fallback -> save to file
         """
+        # 1) System printer via Qt
+        if self.system_mode:
+            try:
+                from PyQt5.QtPrintSupport import QPrinter, QPrinterInfo  # type: ignore
+                from PyQt5.QtGui import QTextDocument  # type: ignore
+                # create printer and set to named one if provided
+                printer = QPrinter()
+                if self.system_printer_name:
+                    # Ensure this printer exists
+                    available = [p.printerName() for p in QPrinterInfo.availablePrinters()]
+                    if self.system_printer_name in available:
+                        printer.setPrinterName(self.system_printer_name)
+                # Use QTextDocument to print plain text
+                doc = QTextDocument()
+                doc.setPlainText(text)
+                doc.print_(printer)
+                return {"status": "printed", "path": None}
+            except Exception:
+                # fall through to next option
+                pass
+
+        # 2) ESC/POS
         if self.printer:
             try:
-                # Use simple text printing; advanced formats may be added
                 self.printer.text(text)
                 try:
                     self.printer.cut()
                 except Exception:
                     pass
                 return {"status": "printed", "path": None}
-            except Exception as e:
-                # fallback to saving file
+            except Exception:
                 pass
 
-        # Fallback: save to file
+        # 3) Fallback: save to file
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"receipt_{ts}.txt"
         path = os.path.abspath(os.path.join(RECEIPTS_DIR, filename))

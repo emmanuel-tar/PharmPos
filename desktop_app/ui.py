@@ -32,6 +32,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtPrintSupport import QPrinterInfo
 
 from desktop_app.auth import AuthenticationService, UserSession
 from desktop_app.models import (
@@ -77,7 +78,7 @@ class PrinterSettingsDialog(QDialog):
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("Printer Type:"))
         self.printer_type_combo = QComboBox()
-        self.printer_type_combo.addItems(["FILE", "USB", "SERIAL", "NETWORK"])
+        self.printer_type_combo.addItems(["FILE", "USB", "SERIAL", "NETWORK", "SYSTEM"])
         self.printer_type_combo.currentTextChanged.connect(self.on_printer_type_changed)
         type_layout.addWidget(self.printer_type_combo)
         layout.addLayout(type_layout)
@@ -123,6 +124,16 @@ class PrinterSettingsDialog(QDialog):
         network_layout.addWidget(self.network_port_input)
         layout.addLayout(network_layout)
 
+        # System / Installed Printers
+        layout.addWidget(QLabel("<b>Installed System Printers</b>"))
+        system_layout = QHBoxLayout()
+        self.system_printer_combo = QComboBox()
+        self.refresh_printers_btn = QPushButton("Refresh Printers")
+        self.refresh_printers_btn.clicked.connect(self.populate_system_printers)
+        system_layout.addWidget(self.system_printer_combo)
+        system_layout.addWidget(self.refresh_printers_btn)
+        layout.addLayout(system_layout)
+
         layout.addStretch()
 
         # Buttons
@@ -158,6 +169,14 @@ class PrinterSettingsDialog(QDialog):
         network_cfg = config.get("network", {})
         self.network_host_input.setText(network_cfg.get("host", "192.168.1.100"))
         self.network_port_input.setValue(network_cfg.get("port", 9100))
+        # Populate system printers and select saved name
+        self.populate_system_printers()
+        system_cfg = config.get("system", {})
+        saved_name = system_cfg.get("name", "")
+        if saved_name:
+            idx = self.system_printer_combo.findText(saved_name)
+            if idx >= 0:
+                self.system_printer_combo.setCurrentIndex(idx)
 
     def on_printer_type_changed(self) -> None:
         """Show/hide relevant settings based on printer type."""
@@ -182,6 +201,9 @@ class PrinterSettingsDialog(QDialog):
                 "host": self.network_host_input.text(),
                 "port": self.network_port_input.value(),
             },
+            "system": {
+                "name": self.system_printer_combo.currentText(),
+            },
         }
         if save_printer_config(config):
             QMessageBox.information(self, "Success", "Printer settings saved successfully.")
@@ -192,28 +214,65 @@ class PrinterSettingsDialog(QDialog):
     def test_printer(self) -> None:
         """Test printer connection."""
         try:
+            from desktop_app.thermal_printer import ThermalPrinter
             printer_type = self.printer_type_combo.currentText()
-            device_info = {}
 
+            device_info = {}
             if printer_type == "USB":
                 device_info = {
                     "idVendor": int(self.usb_vendor_input.text(), 16),
                     "idProduct": int(self.usb_product_input.text(), 16),
                 }
+                backend = {"type": "usb", "device_info": device_info}
             elif printer_type == "SERIAL":
                 device_info = {
-                    "port": self.serial_port_input.text(),
+                    "devfile": self.serial_port_input.text(),
                     "baudrate": self.serial_baudrate_input.value(),
                 }
+                backend = {"type": "serial", "device_info": device_info}
             elif printer_type == "NETWORK":
                 device_info = {
                     "host": self.network_host_input.text(),
                     "port": self.network_port_input.value(),
                 }
+                backend = {"type": "network", "device_info": device_info}
+            elif printer_type == "FILE":
+                backend = None
+            elif printer_type == "SYSTEM":
+                device_info = {"name": self.system_printer_combo.currentText()}
+                backend = {"type": "SYSTEM", "device_info": device_info}
+            else:
+                backend = None
 
-            QMessageBox.information(self, "Test", f"Printer test for {printer_type}: Not yet implemented. Please click Save to apply settings.")
+            printer = ThermalPrinter(backend=backend)
+            from datetime import datetime
+            test_text = (
+                "PRINTER TEST\n"
+                "PharmaPOS Thermal Printer Test\n"
+                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            )
+            res = printer.print_text(test_text)
+            if res.get("status") == "printed":
+                QMessageBox.information(self, "Test", f"Printer test succeeded (printed).")
+            else:
+                QMessageBox.information(self, "Test", f"Printer test saved to file: {res.get('path')}")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Printer test failed: {e}")
+
+    def populate_system_printers(self) -> None:
+        """Populate combobox with system-installed printer names using Qt."""
+        try:
+            self.system_printer_combo.clear()
+            names = [p.printerName() for p in QPrinterInfo.availablePrinters()]
+            if not names:
+                self.system_printer_combo.addItem("(No system printers found)")
+            else:
+                for n in names:
+                    self.system_printer_combo.addItem(n)
+        except Exception:
+            # In case Qt printing support is unavailable
+            self.system_printer_combo.clear()
+            self.system_printer_combo.addItem("(Unavailable)")
 
 
 # --- Stock Receiving Dialog -----------------------------------------------
@@ -1902,9 +1961,10 @@ class MainWindow(QMainWindow):
 
     def print_thermal_receipt(self, receipt_number: str, items: list, subtotal: float, tax: float, total: float,
                               payment_method: str, amount_paid: float, change: float) -> None:
-        """Format and send the receipt to a thermal printer (or save to file fallback)."""
+        """Format and send the receipt to thermal printer using configured settings or file fallback."""
         try:
             from desktop_app.thermal_printer import ThermalPrinter, format_receipt
+            from desktop_app.config import get_printer_device_info
 
             store = self.store_service.get_primary_store() if hasattr(self, 'store_service') else None
 
@@ -1920,8 +1980,16 @@ class MainWindow(QMainWindow):
                 store=store,
             )
 
-            # Instantiate printer with no backend to use file fallback by default.
-            printer = ThermalPrinter(backend=None)
+            # Load printer config and use it, or fallback to file
+            config = load_printer_config()
+            if not config.get('enabled', False):
+                backend_config = None
+            else:
+                printer_type = config.get('type', 'FILE')
+                device_info = get_printer_device_info(printer_type, config)
+                backend_config = {'type': printer_type, 'device_info': device_info}
+
+            printer = ThermalPrinter(backend=backend_config)
             result = printer.print_text(receipt_text)
 
             if result.get('status') == 'printed':
@@ -2009,12 +2077,22 @@ class MainWindow(QMainWindow):
 
 
     def printer_test(self) -> None:
-        """Send a small test print using the thermal printer helper (file fallback)."""
+        """Send a small test print using the configured thermal printer."""
         try:
             from desktop_app.thermal_printer import ThermalPrinter
+            from desktop_app.config import get_printer_backend, get_printer_device_info
             from datetime import datetime
 
-            printer = ThermalPrinter(backend=None)
+            config = load_printer_config()
+            if not config.get('enabled', False):
+                QMessageBox.information(self, 'Printer Test', 'Printer is disabled. Saving to file (fallback).')
+                backend_config = None
+            else:
+                printer_type = config.get('type', 'FILE')
+                device_info = get_printer_device_info(printer_type, config)
+                backend_config = {'type': printer_type, 'device_info': device_info}
+
+            printer = ThermalPrinter(backend=backend_config)
             test_text = (
                 "PRINTER TEST\n"
                 "PharmaPOS Thermal Printer Test\n"
@@ -2027,17 +2105,18 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, 'Printer Test', 'Test printed to device successfully.')
             else:
                 path = res.get('path')
-                QMessageBox.information(self, 'Printer Test', f'Test saved to file: {path}')
+                QMessageBox.information(self, 'Printer Test', f'Test saved to file: {path}\n\n(Printer may be disabled or unavailable.)')
         except Exception as e:
             QMessageBox.warning(self, 'Printer Test', f'Printer test failed: {e}')
 
 
     def reprint_last_receipt(self) -> None:
-        """Re-generate and print (or save) the most recent sale receipt."""
+        """Re-generate and print (or save) the most recent sale receipt using configured printer."""
         try:
             # Local imports to avoid top-level dependencies
             from desktop_app.models import get_session, SalesService
             from desktop_app.database import sales as sales_table, sale_items as sale_items_table, product_batches, products
+            from desktop_app.config import get_printer_device_info
             from sqlalchemy import select
             from desktop_app.thermal_printer import ThermalPrinter, format_receipt
 
@@ -2086,7 +2165,15 @@ class MainWindow(QMainWindow):
                 store=store,
             )
 
-            printer = ThermalPrinter(backend=None)
+            config = load_printer_config()
+            if not config.get('enabled', False):
+                backend_config = None
+            else:
+                printer_type = config.get('type', 'FILE')
+                device_info = get_printer_device_info(printer_type, config)
+                backend_config = {'type': printer_type, 'device_info': device_info}
+
+            printer = ThermalPrinter(backend=backend_config)
             res = printer.print_text(receipt_text)
             if res.get('status') == 'printed':
                 QMessageBox.information(self, 'Reprint', 'Receipt sent to printer.')

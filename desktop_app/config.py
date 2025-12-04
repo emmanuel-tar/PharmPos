@@ -172,7 +172,7 @@ def _default_printer_config() -> Dict[str, Any]:
     """Return default printer configuration."""
     return {
         "enabled": False,
-        "type": "FILE",  # FILE, USB, SERIAL, NETWORK
+        "type": "FILE",  # FILE, USB, SERIAL, NETWORK, SYSTEM
         "usb": {
             "vendor_id": "0x04b8",
             "product_id": "0x0202",
@@ -185,6 +185,9 @@ def _default_printer_config() -> Dict[str, Any]:
             "host": "192.168.1.100",
             "port": 9100,
         },
+        "system": {
+            "name": "",
+        },
     }
 
 
@@ -196,18 +199,30 @@ def get_printer_backend() -> Optional[str]:
     return config.get("type", "FILE")
 
 
-def get_printer_device_info() -> Optional[Dict[str, Any]]:
-    """Get device-specific printer info based on configured backend."""
-    config = load_printer_config()
-    backend = config.get("type", "FILE")
-    
+def get_printer_device_info(printer_type: Optional[str] = None, config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Get device-specific printer info based on configured backend.
+
+    Args:
+        printer_type: Optional printer type override (USB/SERIAL/NETWORK/FILE/SYSTEM)
+        config: Optional config dict to use (if not provided, load from file)
+
+    Returns:
+        dict of backend-specific parameters or None
+    """
+    if config is None:
+        config = load_printer_config()
+
+    backend = (printer_type or config.get("type", "FILE"))
+
     if backend == "USB":
         return config.get("usb", {})
     elif backend == "SERIAL":
         return config.get("serial", {})
     elif backend == "NETWORK":
         return config.get("network", {})
-    
+    elif backend == "SYSTEM":
+        return config.get("system", {})
+
     return None
 
 
