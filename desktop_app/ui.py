@@ -730,43 +730,54 @@ class MainWindow(QMainWindow):
         self.sales_cart_table = QTableWidget()
         self.sales_cart_table.setColumnCount(6)
         self.sales_cart_table.setHorizontalHeaderLabels(
-            ["Name", "Price", "Qty", "Discount", "Total", ""]
+            ["Product Name", "Price (₦)", "Quantity", "Discount (%)", "Total (₦)", "Action"]
         )
-        self.sales_cart_table.setColumnWidth(0, 150)
-        self.sales_cart_table.setColumnWidth(1, 80)
-        self.sales_cart_table.setColumnWidth(2, 60)
-        self.sales_cart_table.setColumnWidth(3, 80)
-        self.sales_cart_table.setColumnWidth(4, 100)
-        self.sales_cart_table.setColumnWidth(5, 30)
+        self.sales_cart_table.setColumnWidth(0, 250)
+        self.sales_cart_table.setColumnWidth(1, 100)
+        self.sales_cart_table.setColumnWidth(2, 80)
+        self.sales_cart_table.setColumnWidth(3, 100)
+        self.sales_cart_table.setColumnWidth(4, 120)
+        self.sales_cart_table.setColumnWidth(5, 60)
+        self.sales_cart_table.setRowHeight(0, 30)
         right_layout.addWidget(self.sales_cart_table)
 
         # Summary section
         summary_layout = QVBoxLayout()
+        summary_layout.setSpacing(8)
         
         # Subtotal
         subtotal_layout = QHBoxLayout()
-        subtotal_layout.addWidget(QLabel("Subtotal"))
+        subtotal_lbl = QLabel("Subtotal:")
+        subtotal_lbl.setStyleSheet("font-size: 12px; font-weight: bold;")
+        subtotal_layout.addWidget(subtotal_lbl)
         subtotal_layout.addStretch()
         self.subtotal_label = QLabel("0.00 N")
         self.subtotal_label.setAlignment(Qt.AlignRight)
+        self.subtotal_label.setStyleSheet("font-size: 12px;")
         subtotal_layout.addWidget(self.subtotal_label)
         summary_layout.addLayout(subtotal_layout)
 
         # Discount
         discount_layout = QHBoxLayout()
-        discount_layout.addWidget(QLabel("Discount"))
+        discount_lbl = QLabel("Discount:")
+        discount_lbl.setStyleSheet("font-size: 12px; font-weight: bold;")
+        discount_layout.addWidget(discount_lbl)
         discount_layout.addStretch()
         self.discount_label = QLabel("(0.00%) 0.00 N")
         self.discount_label.setAlignment(Qt.AlignRight)
+        self.discount_label.setStyleSheet("font-size: 12px;")
         discount_layout.addWidget(self.discount_label)
         summary_layout.addLayout(discount_layout)
 
         # Tax
         tax_layout = QHBoxLayout()
-        tax_layout.addWidget(QLabel("Tax"))
+        tax_lbl = QLabel("Tax:")
+        tax_lbl.setStyleSheet("font-size: 12px; font-weight: bold;")
+        tax_layout.addWidget(tax_lbl)
         tax_layout.addStretch()
         self.tax_label = QLabel("0.00 N")
         self.tax_label.setAlignment(Qt.AlignRight)
+        self.tax_label.setStyleSheet("font-size: 12px;")
         tax_layout.addWidget(self.tax_label)
         summary_layout.addLayout(tax_layout)
 
@@ -789,16 +800,18 @@ class MainWindow(QMainWindow):
         right_layout.addLayout(payment_layout)
 
         # Sale button (green, large)
-        self.complete_sale_btn = QPushButton("SALE")
-        self.complete_sale_btn.setMinimumHeight(50)
+        self.complete_sale_btn = QPushButton("COMPLETE SALE")
+        self.complete_sale_btn.setMinimumHeight(70)
+        self.complete_sale_btn.setMinimumWidth(200)
         self.complete_sale_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
                 color: white;
                 font-weight: bold;
-                font-size: 16px;
+                font-size: 18px;
                 border: none;
                 border-radius: 5px;
+                padding: 10px;
             }
             QPushButton:hover {
                 background-color: #218838;
@@ -813,7 +826,8 @@ class MainWindow(QMainWindow):
         # Total amount display
         self.total_amount_label = QLabel("0.00 N")
         self.total_amount_label.setAlignment(Qt.AlignRight)
-        self.total_amount_label.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.total_amount_label.setStyleSheet("font-weight: bold; font-size: 22px; color: #28a745; padding: 10px;")
+        self.total_amount_label.setMinimumHeight(40)
         right_layout.addWidget(self.total_amount_label)
 
         right_widget = QWidget()
@@ -1438,8 +1452,22 @@ class MainWindow(QMainWindow):
             self.sales_cart_table.setItem(row, 4, QTableWidgetItem(f"{price:.2f}"))
 
             # Delete button
-            delete_btn = QPushButton("X")
-            delete_btn.setMaximumWidth(30)
+            delete_btn = QPushButton("Delete")
+            delete_btn.setMaximumWidth(60)
+            delete_btn.setMinimumHeight(30)
+            delete_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #dc3545;
+                    color: white;
+                    font-weight: bold;
+                    border: none;
+                    border-radius: 3px;
+                    padding: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #c82333;
+                }
+            """)
             delete_btn.clicked.connect(lambda: self.remove_from_cart(row))
             self.sales_cart_table.setCellWidget(row, 5, delete_btn)
 
