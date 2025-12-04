@@ -1540,49 +1540,103 @@ class MainWindow(QMainWindow):
     def complete_sale(self) -> None:
         """Complete sale transaction with payment."""
         try:
-            if not hasattr(self, "current_cart") or not self.current_cart:
+            # Check if cart has items
+            if self.sales_cart_table.rowCount() == 0:
                 QMessageBox.warning(self, "Empty Cart", "Add items to cart first")
                 return
 
             # Get payment details
-            payment_method = self.payment_method.currentText()
-            amount_paid = self.amount_paid_input.value()
+            payment_method = self.sales_payment_method.currentText()
+            amount_paid = self.sales_amount_paid.value()
 
-            # Calculate total from cart
-            total_amount = sum(
-                item["quantity"] * item["unit_price"] 
-                for item in self.current_cart
-            )
+            # Extract cart items from table
+            cart_items = []
+            subtotal = 0.0
+            
+            for row in range(self.sales_cart_table.rowCount()):
+                name_item = self.sales_cart_table.item(row, 0)
+                price_item = self.sales_cart_table.item(row, 1)
+                qty_item = self.sales_cart_table.item(row, 2)
+                
+                if name_item and price_item and qty_item:
+                    name = name_item.text()
+                    price = float(price_item.text()) if price_item.text() else 0.0
+                    qty = int(qty_item.text()) if qty_item.text() else 0
+                    
+                    if qty > 0:
+                        product_id = getattr(name_item, 'product_id', None)
+                        cart_items.append({
+                            "product_id": product_id,
+                            "product_name": name,
+                            "unit_price": price,
+                            "quantity": qty,
+                        })
+                        subtotal += price * qty
+
+            if not cart_items:
+                QMessageBox.warning(self, "Empty Cart", "Add items to cart first")
+                return
+
+            # Calculate tax and total
+            tax = subtotal * 0.075  # 7.5% VAT
+            total_amount = subtotal + tax
 
             if amount_paid < total_amount:
                 QMessageBox.warning(
                     self,
                     "Insufficient Payment",
+                    f"Subtotal: ₦{subtotal:.2f}\n"
+                    f"Tax (7.5%): ₦{tax:.2f}\n"
                     f"Total: ₦{total_amount:.2f}\n"
                     f"Paid: ₦{amount_paid:.2f}\n"
                     f"Shortfall: ₦{total_amount - amount_paid:.2f}",
                 )
                 return
 
-            # Prepare sale items from cart
-            sale_items = []
-            for cart_item in self.current_cart:
-                for batch in cart_item["batches"]:
-                    sale_items.append({
-                        "batch_id": batch["batch_id"],
-                        "quantity": batch["quantity"],
+            # Allocate batches using FEFO for each product
+            sales_service = SalesService(get_session())
+            inventory_service = InventoryService(get_session())
+            store = self.store_service.get_primary_store()
+            user_id = getattr(self.user_session, "user_id", 1)
+            
+            allocated_items = []
+            for cart_item in cart_items:
+                # Get available batches for product (FEFO - earliest expiry first)
+                batches = inventory_service.get_available_batches(
+                    product_id=cart_item["product_id"],
+                    store_id=store["id"],
+                    quantity_needed=cart_item["quantity"],
+                )
+                
+                if not batches or sum(b["available_quantity"] for b in batches) < cart_item["quantity"]:
+                    QMessageBox.warning(
+                        self,
+                        "Insufficient Stock",
+                        f"Not enough stock for {cart_item['product_name']}\n"
+                        f"Needed: {cart_item['quantity']}\n"
+                        f"Available: {sum(b['available_quantity'] for b in batches)}",
+                    )
+                    return
+                
+                # Allocate from batches
+                remaining_qty = cart_item["quantity"]
+                for batch in batches:
+                    if remaining_qty <= 0:
+                        break
+                    
+                    qty_to_take = min(remaining_qty, batch["available_quantity"])
+                    allocated_items.append({
+                        "batch_id": batch["id"],
+                        "quantity": qty_to_take,
                         "unit_price": cart_item["unit_price"],
                     })
+                    remaining_qty -= qty_to_take
 
             # Create sale
-            sales_service = SalesService(self.session)
-            user_id = getattr(self.user_session, "user_id", 1)
-            store = self.store_service.get_primary_store()
-
             sale_result = sales_service.create_sale(
                 user_id=user_id,
                 store_id=store["id"],
-                items=sale_items,
+                items=allocated_items,
                 payment_method=payment_method,
                 amount_paid=Decimal(str(amount_paid)),
             )
@@ -1592,16 +1646,19 @@ class MainWindow(QMainWindow):
                 self,
                 "Sale Completed",
                 f"Receipt #: {sale_result['receipt_number']}\n"
+                f"Subtotal: ₦{subtotal:.2f}\n"
+                f"Tax (7.5%): ₦{tax:.2f}\n"
                 f"Total: ₦{total_amount:.2f}\n"
                 f"Amount Paid: ₦{amount_paid:.2f}\n"
                 f"Change: ₦{change:.2f}",
             )
 
             # Clear cart and reset UI
-            self.current_cart = []
-            self.sales_status.setText("Ready for new sale")
-            self.cart_table.setRowCount(0)
-            self.amount_paid_input.setValue(0)
+            self.sales_cart_table.setRowCount(0)
+            self.customer_input.clear()
+            self.sales_amount_paid.setValue(0)
+            self.sales_payment_method.setCurrentIndex(0)
+            self.update_sales_summary()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to complete sale: {str(e)}")

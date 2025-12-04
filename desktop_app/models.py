@@ -353,6 +353,27 @@ class InventoryService:
         result = self.session.execute(stmt).scalar()
         return result or 0
 
+    def get_available_batches(self, product_id: int, store_id: int, quantity_needed: int = None) -> List[dict]:
+        """Get all available batches for a product in FEFO order (earliest expiry first).
+        
+        Returns list of batches with their available quantities.
+        """
+        stmt = (
+            select(product_batches)
+            .where(product_batches.c.product_id == product_id)
+            .where(product_batches.c.store_id == store_id)
+            .where(product_batches.c.quantity > 0)
+            .order_by(product_batches.c.expiry_date)
+        )
+        results = self.session.execute(stmt).fetchall()
+        batches = [dict(row._mapping) for row in results]
+        
+        # Add available_quantity field for clarity
+        for batch in batches:
+            batch['available_quantity'] = batch.get('quantity', 0)
+        
+        return batches
+
     def allocate_stock_for_sale(self, product_id: int, store_id: int, quantity: int) -> List[dict]:
         """Allocate stock for a sale using FEFO. Returns list of allocations: [{batch_id, quantity}].
 
