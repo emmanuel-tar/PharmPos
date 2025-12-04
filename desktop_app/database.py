@@ -118,6 +118,17 @@ products = Table(
     Column("nafdac_number", String, nullable=False),
     Column("cost_price", Numeric(10, 2), nullable=False),
     Column("selling_price", Numeric(10, 2), nullable=False),
+    # Pricing tiers
+    Column("retail_price", Numeric(10, 2), nullable=False),
+    Column("bulk_price", Numeric(10, 2)),  # Lower price for bulk quantities
+    Column("bulk_quantity", Integer),  # Minimum quantity for bulk price
+    Column("wholesale_price", Numeric(10, 2)),  # Even lower for wholesale/large orders
+    Column("wholesale_quantity", Integer),  # Minimum quantity for wholesale price
+    # Stock alerts
+    Column("min_stock", Integer, server_default=text("0"), nullable=False),  # Alert when below
+    Column("max_stock", Integer, server_default=text("9999"), nullable=False),  # Alert when above
+    Column("reorder_level", Integer),  # Suggested reorder quantity
+    # Other
     Column("description", Text),
     Column("is_active", Boolean, server_default=text("1"), nullable=False),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
@@ -152,6 +163,12 @@ product_batches = Table(
     Column("expiry_date", Date, nullable=False),
     Column("quantity", Integer, server_default=text("0"), nullable=False),
     Column("cost_price", Numeric(10, 2)),
+    # Pricing per batch (can override product defaults)
+    Column("retail_price", Numeric(10, 2)),
+    Column("bulk_price", Numeric(10, 2)),
+    Column("bulk_quantity", Integer),
+    Column("wholesale_price", Numeric(10, 2)),
+    Column("wholesale_quantity", Integer),
     Column("received_date", DateTime, server_default=func.now(), nullable=False),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
     Column(
@@ -331,12 +348,120 @@ stock_reservations = Table(
     "stock_reservations",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("product_id", Integer, ForeignKey("products.id", ondelete="RESTRICT")),
-    Column("store_id", Integer, ForeignKey("stores.id", ondelete="RESTRICT")),
+    Column("product_batch_id", Integer, ForeignKey("product_batches.id", ondelete="RESTRICT")),
     Column("quantity", Integer, nullable=False),
+    Column("reason", String),  # 'pending_sale', 'qa_review', 'hold'
+    Column("status", String, server_default=text("'active'")),  # 'active', 'released', 'confirmed'
     Column("user_id", Integer, ForeignKey("users.id", ondelete="SET NULL")),
-    Column("reserved_until", DateTime),
-    Column("status", String, server_default=text("'active'")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+)
+
+# stock_adjustments (manual adjustments, damage, loss, corrections)
+stock_adjustments = Table(
+    "stock_adjustments",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "product_batch_id",
+        Integer,
+        ForeignKey("product_batches.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("previous_quantity", Integer, nullable=False),
+    Column("new_quantity", Integer, nullable=False),
+    Column("reason", String, nullable=False),  # 'damage', 'loss', 'obsolete', 'correction'
+    Column("notes", Text),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("approved_by", Integer, ForeignKey("users.id", ondelete="SET NULL")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
+# backorders (unfulfilled demand)
+backorders = Table(
+    "backorders",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "product_id",
+        Integer,
+        ForeignKey("products.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "store_id",
+        Integer,
+        ForeignKey("stores.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("quantity", Integer, nullable=False),
+    Column("customer_id", Integer),
+    Column("status", String, server_default=text("'pending'")),  # 'pending', 'partial', 'fulfilled', 'cancelled'
+    Column("notes", Text),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column("fulfilled_date", DateTime),
+)
+
+# inventory_reconciliations (physical count records)
+inventory_reconciliations = Table(
+    "inventory_reconciliations",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "store_id",
+        Integer,
+        ForeignKey("stores.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("reconciliation_date", DateTime, nullable=False),
+    Column("total_variance_qty", Integer),
+    Column("notes", Text),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
+# reconciliation_items (detail per batch)
+reconciliation_items = Table(
+    "reconciliation_items",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "reconciliation_id",
+        Integer,
+        ForeignKey("inventory_reconciliations.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "product_batch_id",
+        Integer,
+        ForeignKey("product_batches.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("system_quantity", Integer, nullable=False),
+    Column("counted_quantity", Integer, nullable=False),
+    Column("variance_quantity", Integer, nullable=False),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
 )
 
@@ -516,6 +641,8 @@ __all__ = [
     "metadata",
     "get_engine",
     "init_db",
+    "dispose_engine",
+    "dispose_all_engines",
     "stores",
     "users",
     "products",
@@ -524,4 +651,12 @@ __all__ = [
     "sale_items",
     "stock_transfers",
     "inventory_audit",
+    "suppliers",
+    "purchase_receipts",
+    "purchase_receipt_items",
+    "stock_reservations",
+    "stock_adjustments",
+    "backorders",
+    "inventory_reconciliations",
+    "reconciliation_items",
 ]

@@ -162,8 +162,16 @@ class ProductService:
         generic_name: str = "",
         barcode: str = "",
         description: str = "",
+        retail_price: Decimal = None,
+        bulk_price: Decimal = None,
+        bulk_quantity: int = None,
+        wholesale_price: Decimal = None,
+        wholesale_quantity: int = None,
+        min_stock: int = 0,
+        max_stock: int = 9999,
+        reorder_level: int = None,
     ) -> dict:
-        """Create a new product."""
+        """Create a new product with pricing tiers and stock alerts."""
         stmt = products.insert().values(
             name=name,
             sku=sku,
@@ -173,6 +181,14 @@ class ProductService:
             generic_name=generic_name,
             barcode=barcode,
             description=description,
+            retail_price=retail_price or selling_price,
+            bulk_price=bulk_price,
+            bulk_quantity=bulk_quantity,
+            wholesale_price=wholesale_price,
+            wholesale_quantity=wholesale_quantity,
+            min_stock=min_stock,
+            max_stock=max_stock,
+            reorder_level=reorder_level,
         )
         result = self.session.execute(stmt)
         self.session.commit()
@@ -182,6 +198,14 @@ class ProductService:
             "sku": sku,
             "cost_price": float(cost_price),
             "selling_price": float(selling_price),
+            "retail_price": float(retail_price or selling_price),
+            "bulk_price": float(bulk_price) if bulk_price is not None else None,
+            "bulk_quantity": int(bulk_quantity) if bulk_quantity is not None else None,
+            "wholesale_price": float(wholesale_price) if wholesale_price is not None else None,
+            "wholesale_quantity": int(wholesale_quantity) if wholesale_quantity is not None else None,
+            "min_stock": int(min_stock),
+            "max_stock": int(max_stock),
+            "reorder_level": int(reorder_level) if reorder_level is not None else None,
         }
 
     def get_product(self, product_id: int) -> Optional[dict]:
@@ -238,8 +262,17 @@ class InventoryService:
         quantity: int,
         expiry_date: date,
         cost_price: Decimal,
+        retail_price: Decimal = None,
+        bulk_price: Decimal = None,
+        bulk_quantity: int = None,
+        wholesale_price: Decimal = None,
+        wholesale_quantity: int = None,
+        min_stock: int = 0,
+        max_stock: int = 9999,
+        reorder_level: int = None,
     ) -> dict:
-        """Record receipt of new stock batch."""
+        """Record receipt of new stock batch with comprehensive pricing."""
+        # Insert batch with all pricing info
         stmt = product_batches.insert().values(
             product_id=product_id,
             store_id=store_id,
@@ -247,14 +280,48 @@ class InventoryService:
             quantity=quantity,
             expiry_date=expiry_date,
             cost_price=cost_price,
+            retail_price=retail_price,
+            bulk_price=bulk_price,
+            bulk_quantity=bulk_quantity,
+            wholesale_price=wholesale_price,
+            wholesale_quantity=wholesale_quantity,
         )
         result = self.session.execute(stmt)
+        batch_id = result.inserted_primary_key[0]
+
+        # Update product master with stock alert levels and pricing
+        product_update = (
+            products.update()
+            .where(products.c.id == product_id)
+            .values(
+                min_stock=min_stock,
+                max_stock=max_stock,
+                reorder_level=reorder_level if reorder_level else quantity // 2,
+                retail_price=retail_price or cost_price * Decimal("1.5"),
+                bulk_price=bulk_price,
+                bulk_quantity=bulk_quantity,
+                wholesale_price=wholesale_price,
+                wholesale_quantity=wholesale_quantity,
+            )
+        )
+        self.session.execute(product_update)
         self.session.commit()
+
         return {
-            "id": result.inserted_primary_key[0],
+            "id": batch_id,
             "product_id": product_id,
             "batch_number": batch_number,
             "quantity": quantity,
+            "expiry_date": expiry_date,
+            "cost_price": cost_price,
+            "retail_price": retail_price,
+            "bulk_price": bulk_price,
+            "bulk_quantity": bulk_quantity,
+            "wholesale_price": wholesale_price,
+            "wholesale_quantity": wholesale_quantity,
+            "min_stock": min_stock,
+            "max_stock": max_stock,
+            "reorder_level": reorder_level,
         }
 
     def get_batch(self, batch_id: int) -> Optional[dict]:
@@ -652,6 +719,375 @@ class InventoryService:
         return True
 
 
+    def adjust_stock(
+        self,
+        batch_id: int,
+        quantity_change: int,
+        reason: str,
+        user_id: int,
+        notes: str = "",
+    ) -> bool:
+        """
+        Adjust batch quantity (positive or negative).
+        
+        Args:
+            batch_id: Batch to adjust
+            quantity_change: Positive or negative change
+            reason: Reason for adjustment (damage, loss, correction, etc.)
+            user_id: User making adjustment
+            notes: Optional notes
+        
+        Returns:
+            bool: Success flag
+        """
+        # Import here to avoid circular import
+        from desktop_app.database import stock_adjustments
+
+        batch = self.get_batch(batch_id)
+        if not batch:
+            return False
+
+        previous_qty = batch["quantity"]
+        new_qty = max(0, previous_qty + quantity_change)  # Prevent negative stock
+
+        # Record adjustment in stock_adjustments table
+        adj_stmt = stock_adjustments.insert().values(
+            product_batch_id=batch_id,
+            previous_quantity=previous_qty,
+            new_quantity=new_qty,
+            reason=reason,
+            notes=notes,
+            user_id=user_id,
+        )
+        adj_result = self.session.execute(adj_stmt)
+        adjustment_id = adj_result.inserted_primary_key[0]
+
+        # Update batch quantity
+        return self.update_batch_quantity(
+            batch_id=batch_id,
+            quantity_change=quantity_change,
+            change_type="adjustment",
+            user_id=user_id,
+            reference_id=adjustment_id,
+            notes=f"{reason}: {notes}" if notes else reason,
+        )
+
+    def writeoff_batch(
+        self, batch_id: int, reason: str, user_id: int, notes: str = ""
+    ) -> bool:
+        """
+        Write off an entire batch (set quantity to 0).
+        
+        Args:
+            batch_id: Batch to write off
+            reason: Reason for write-off (obsolete, damaged, etc.)
+            user_id: User performing write-off
+            notes: Optional notes
+        
+        Returns:
+            bool: Success flag
+        """
+        batch = self.get_batch(batch_id)
+        if not batch:
+            return False
+
+        qty = batch.get("quantity", 0) or 0
+        if qty <= 0:
+            return False  # Already written off or empty
+
+        return self.adjust_stock(
+            batch_id=batch_id,
+            quantity_change=-qty,
+            reason="writeoff",
+            user_id=user_id,
+            notes=f"{reason}: {notes}" if notes else reason,
+        )
+
+    def reserve_stock(
+        self, product_batch_id: int, quantity: int, reason: str, user_id: int
+    ) -> Optional[dict]:
+        """
+        Reserve (hold) a quantity on a specific batch.
+        
+        Args:
+            product_batch_id: Batch to reserve from
+            quantity: Quantity to reserve
+            reason: Reason for reservation (pending_sale, qa_review, hold)
+            user_id: User making reservation
+        
+        Returns:
+            dict with reservation_id or None if batch not found
+        """
+        from desktop_app.database import stock_reservations
+
+        batch = self.get_batch(product_batch_id)
+        if not batch or batch["quantity"] < quantity:
+            return None  # Insufficient stock
+
+        stmt = stock_reservations.insert().values(
+            product_batch_id=product_batch_id,
+            quantity=quantity,
+            reason=reason,
+            status="active",
+            user_id=user_id,
+        )
+        result = self.session.execute(stmt)
+        self.session.commit()
+
+        reservation_id = result.inserted_primary_key[0]
+
+        # Log to audit
+        self.update_batch_quantity(
+            batch_id=product_batch_id,
+            quantity_change=-quantity,
+            change_type="reserved",
+            user_id=user_id,
+            reference_id=reservation_id,
+            notes=f"Reserve: {reason}",
+        )
+
+        return {
+            "reservation_id": reservation_id,
+            "product_batch_id": product_batch_id,
+            "quantity": quantity,
+            "reason": reason,
+        }
+
+    def release_reservation(self, reservation_id: int, user_id: int) -> bool:
+        """
+        Release a reservation, returning quantity to available stock.
+        
+        Args:
+            reservation_id: Reservation to release
+            user_id: User releasing reservation
+        
+        Returns:
+            bool: Success flag
+        """
+        from desktop_app.database import stock_reservations
+
+        # Get reservation
+        stmt = select(stock_reservations).where(
+            stock_reservations.c.id == reservation_id
+        )
+        result = self.session.execute(stmt).fetchone()
+        if not result:
+            return False
+
+        reservation = dict(result._mapping)
+
+        # Update reservation status
+        update_stmt = (
+            stock_reservations.update()
+            .where(stock_reservations.c.id == reservation_id)
+            .values(status="released")
+        )
+        self.session.execute(update_stmt)
+
+        # Return quantity to batch
+        return self.update_batch_quantity(
+            batch_id=reservation["product_batch_id"],
+            quantity_change=reservation["quantity"],
+            change_type="release",
+            user_id=user_id,
+            reference_id=reservation_id,
+            notes="Release reservation",
+        )
+
+    def confirm_reservation(
+        self, reservation_id: int, user_id: int, reference_id: Optional[int] = None
+    ) -> bool:
+        """
+        Confirm a reservation and deduct as sale.
+        
+        Args:
+            reservation_id: Reservation to confirm
+            user_id: User confirming
+            reference_id: Sale ID (optional)
+        
+        Returns:
+            bool: Success flag
+        """
+        from desktop_app.database import stock_reservations
+
+        # Get reservation
+        stmt = select(stock_reservations).where(
+            stock_reservations.c.id == reservation_id
+        )
+        result = self.session.execute(stmt).fetchone()
+        if not result:
+            return False
+
+        reservation = dict(result._mapping)
+
+        # Update reservation status
+        update_stmt = (
+            stock_reservations.update()
+            .where(stock_reservations.c.id == reservation_id)
+            .values(status="confirmed")
+        )
+        self.session.execute(update_stmt)
+
+        # Log to audit
+        return self.update_batch_quantity(
+            batch_id=reservation["product_batch_id"],
+            quantity_change=0,  # Quantity already deducted on reserve
+            change_type="confirm_reserve",
+            user_id=user_id,
+            reference_id=reference_id or reservation_id,
+            notes="Confirm reservation as sale",
+        )
+
+    def create_backorder(
+        self,
+        product_id: int,
+        store_id: int,
+        quantity: int,
+        customer_id: Optional[int],
+        notes: str,
+        user_id: int,
+    ) -> Optional[dict]:
+        """
+        Create a backorder for unfulfilled demand.
+        
+        Args:
+            product_id: Product on backorder
+            store_id: Store location
+            quantity: Quantity ordered
+            customer_id: Customer (optional)
+            notes: Notes for backorder
+            user_id: User creating backorder
+        
+        Returns:
+            dict with backorder_id or None on error
+        """
+        from desktop_app.database import backorders
+
+        stmt = backorders.insert().values(
+            product_id=product_id,
+            store_id=store_id,
+            quantity=quantity,
+            customer_id=customer_id,
+            notes=notes,
+            user_id=user_id,
+            status="pending",
+        )
+        result = self.session.execute(stmt)
+        self.session.commit()
+
+        backorder_id = result.inserted_primary_key[0]
+        return {
+            "backorder_id": backorder_id,
+            "product_id": product_id,
+            "quantity": quantity,
+            "status": "pending",
+        }
+
+    def reconcile_inventory(
+        self,
+        store_id: int,
+        counts_data: List[dict],
+        user_id: int,
+        notes: str = "",
+    ) -> dict:
+        """
+        Compare physical inventory counts against system records.
+        
+        Args:
+            store_id: Store to reconcile
+            counts_data: [{'product_batch_id': int, 'counted_qty': int}, ...]
+            user_id: User performing reconciliation
+            notes: Notes for reconciliation
+        
+        Returns:
+            {
+                'reconciliation_id': int,
+                'total_variance': int,
+                'adjustments': [adjustment_ids],
+                'variances': [{'batch_id', 'system_qty', 'counted_qty', 'variance'}, ...]
+            }
+        """
+        from desktop_app.database import (
+            inventory_reconciliations,
+            reconciliation_items,
+        )
+
+        # Create reconciliation record
+        recon_stmt = inventory_reconciliations.insert().values(
+            store_id=store_id,
+            reconciliation_date=datetime.now(),
+            notes=notes,
+            user_id=user_id,
+        )
+        recon_result = self.session.execute(recon_stmt)
+        reconciliation_id = recon_result.inserted_primary_key[0]
+
+        variances = []
+        adjustments = []
+        total_variance = 0
+
+        for count in counts_data:
+            batch_id = count.get("product_batch_id")
+            counted_qty = count.get("counted_qty", 0)
+
+            batch = self.get_batch(batch_id)
+            if not batch:
+                continue
+
+            system_qty = batch["quantity"]
+            variance = counted_qty - system_qty
+
+            # Record variance detail
+            item_stmt = reconciliation_items.insert().values(
+                reconciliation_id=reconciliation_id,
+                product_batch_id=batch_id,
+                system_quantity=system_qty,
+                counted_quantity=counted_qty,
+                variance_quantity=variance,
+            )
+            self.session.execute(item_stmt)
+
+            variances.append(
+                {
+                    "batch_id": batch_id,
+                    "system_qty": system_qty,
+                    "counted_qty": counted_qty,
+                    "variance": variance,
+                }
+            )
+
+            # If variance, adjust stock
+            if variance != 0:
+                adj_result = self.adjust_stock(
+                    batch_id=batch_id,
+                    quantity_change=variance,
+                    reason="reconciliation",
+                    user_id=user_id,
+                    notes=f"Physical count reconciliation",
+                )
+                if adj_result:
+                    # Get the adjustment ID just created
+                    # (In a real system, adjust_stock would return the ID)
+                    adjustments.append(batch_id)
+                    total_variance += abs(variance)
+
+        # Update reconciliation total variance
+        update_stmt = (
+            inventory_reconciliations.update()
+            .where(inventory_reconciliations.c.id == reconciliation_id)
+            .values(total_variance_qty=total_variance)
+        )
+        self.session.execute(update_stmt)
+        self.session.commit()
+
+        return {
+            "reconciliation_id": reconciliation_id,
+            "total_variance": total_variance,
+            "adjustments": adjustments,
+            "variances": variances,
+        }
+
+
 # --- Sales Service -----------------------------------------------------------
 class SalesService:
     """Service for processing sales transactions."""
@@ -716,6 +1152,7 @@ class SalesService:
             "id": sale_id,
             "receipt_number": receipt_number,
             "total_amount": float(total_amount),
+            "amount_paid": float(amount_paid),
             "change_amount": float(change_amount),
         }
 
