@@ -1716,6 +1716,39 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to complete sale: {str(e)}")
 
+    def print_thermal_receipt(self, receipt_number: str, items: list, subtotal: float, tax: float, total: float,
+                              payment_method: str, amount_paid: float, change: float) -> None:
+        """Format and send the receipt to a thermal printer (or save to file fallback)."""
+        try:
+            from desktop_app.thermal_printer import ThermalPrinter, format_receipt
+
+            store = self.store_service.get_primary_store() if hasattr(self, 'store_service') else None
+
+            receipt_text = format_receipt(
+                receipt_number=str(receipt_number),
+                items=items,
+                subtotal=subtotal,
+                tax=tax,
+                total=total,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+                change=change,
+                store=store,
+            )
+
+            # Instantiate printer with no backend to use file fallback by default.
+            printer = ThermalPrinter(backend=None)
+            result = printer.print_text(receipt_text)
+
+            if result.get('status') == 'printed':
+                QMessageBox.information(self, 'Printer', 'Receipt sent to thermal printer.')
+            else:
+                path = result.get('path')
+                QMessageBox.information(self, 'Receipt Saved', f'Receipt saved to: {path}')
+
+        except Exception as e:
+            QMessageBox.warning(self, 'Print Error', f'Failed to print receipt: {e}')
+
 
     def receive_stock(self) -> None:
         """Open dialog to receive stock with comprehensive pricing and alerts."""
@@ -1916,4 +1949,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error printing receipt: {str(e)}")
 
-    def complete_sale(self) -> None:
+    
