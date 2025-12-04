@@ -43,6 +43,7 @@ from desktop_app.models import (
     get_session,
 )
 from desktop_app.sales import SalesTransaction
+from desktop_app.printer import ThermalPrinter, PrinterType, ReceiptGenerator
 from desktop_app.inventory import BatchManager, InventoryAlerts
 from desktop_app.reports import SalesReporter, InventoryReporter
 from desktop_app.product_manager import ProductImportExporter
@@ -1681,6 +1682,30 @@ class MainWindow(QMainWindow):
                 f"Change: ₦{change:.2f}",
             )
 
+            # Print receipt to thermal printer
+            self.print_thermal_receipt(
+                receipt_number=sale_result['receipt_number'],
+                items=cart_items,
+                subtotal=subtotal,
+                tax=tax,
+                total=total_amount,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+                change=change,
+            )
+            
+            # Display confirmation message
+            QMessageBox.information(
+                self,
+                "Sale Completed",
+                f"Receipt #: {sale_result['receipt_number']}\n"
+                f"Subtotal: ₦{subtotal:.2f}\n"
+                f"Tax (7.5%): ₦{tax:.2f}\n"
+                f"Total: ₦{total_amount:.2f}\n"
+                f"Amount Paid: ₦{amount_paid:.2f}\n"
+                f"Change: ₦{change:.2f}",
+            )
+
             # Clear cart and reset UI
             self.sales_cart_table.setRowCount(0)
             self.customer_input.clear()
@@ -1829,3 +1854,66 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+    def print_thermal_receipt(
+        self,
+        receipt_number: str,
+        items: list,
+        subtotal: float,
+        tax: float,
+        total: float,
+        payment_method: str,
+        amount_paid: float,
+        change: float,
+    ) -> None:
+        """Print receipt to thermal printer (ESC/POS protocol)."""
+        try:
+            # Initialize thermal printer (FILE mode for testing/demo)
+            # Change PrinterType.FILE to:
+            #   PrinterType.USB for USB thermal printer (Epson TM series)
+            #   PrinterType.SERIAL for Serial thermal printer (COM port)
+            #   PrinterType.NETWORK for Network printer (LAN)
+            printer = ThermalPrinter(
+                printer_type=PrinterType.FILE,  # Change to USB/SERIAL/NETWORK for actual printer
+                output_file="receipts/receipt_{}.txt".format(receipt_number)
+            )
+
+            # Prepare receipt items for printing
+            receipt_items = []
+            for item in items:
+                receipt_items.append({
+                    "product_name": item.get("product_name", "Unknown Product"),
+                    "quantity": item.get("quantity", 0),
+                    "unit_price": item.get("unit_price", 0),
+                })
+
+            # Get store info
+            store = self.store_service.get_primary_store()
+            store_name = store.get("name", "PharmaPOS Store") if store else "PharmaPOS Store"
+
+            # Print receipt
+            success = printer.print_receipt(
+                receipt_number=receipt_number,
+                store_name=store_name,
+                items=receipt_items,
+                subtotal=subtotal,
+                tax=tax,
+                total=total,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+                change=change,
+                customer_name=self.customer_input.text() or "Walk-in Customer",
+                cashier_name=self.user_session.username if self.user_session else "Cashier",
+            )
+
+            if success:
+                print(f"Receipt #{receipt_number} printed successfully")
+            else:
+                print(f"Warning: Failed to print receipt #{receipt_number}")
+                
+            printer.close()
+
+        except Exception as e:
+            print(f"Error printing receipt: {str(e)}")
+
+    def complete_sale(self) -> None:
