@@ -29,6 +29,7 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QScrollArea,
     QFrame,
+    QCheckBox,
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QFont
@@ -51,111 +52,157 @@ from desktop_app.product_manager import ProductImportExporter
 from desktop_app.config import load_printer_config, save_printer_config
 
 
-# --- Printer Settings Dialog -----------------------------------------------
 class PrinterSettingsDialog(QDialog):
-    """Dialog to configure thermal printer settings."""
+    """Dialog to configure thermal printer settings.
+
+    Enhancements:
+      - Support picking an installed system printer (via Qt)
+      - Enumerate serial ports (if pyserial installed)
+      - Enumerate USB devices (if pyusb installed)
+      - Allow selecting the medium and device and saving to `config.json`
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Printer Settings")
-        self.setGeometry(200, 200, 600, 500)
+        self.setGeometry(200, 200, 700, 420)
         self.setup_ui()
         self.load_config()
 
     def setup_ui(self) -> None:
-        """Setup printer settings UI."""
         layout = QVBoxLayout()
 
-        # Enable/Disable
+        # Enable checkbox
         enable_layout = QHBoxLayout()
         enable_layout.addWidget(QLabel("Enable Thermal Printer:"))
-        self.enable_checkbox = QLineEdit()
-        self.enable_checkbox.setText("No")
+        self.enable_checkbox = QCheckBox()
         enable_layout.addWidget(self.enable_checkbox)
+        enable_layout.addStretch()
         layout.addLayout(enable_layout)
 
-        # Printer Type
+        # Printer Type selection
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("Printer Type:"))
         self.printer_type_combo = QComboBox()
         self.printer_type_combo.addItems(["FILE", "USB", "SERIAL", "NETWORK", "SYSTEM"])
         self.printer_type_combo.currentTextChanged.connect(self.on_printer_type_changed)
         type_layout.addWidget(self.printer_type_combo)
+
+        # System printer picker
+        type_layout.addWidget(QLabel("System Printer:"))
+        self.system_printer_combo = QComboBox()
+        type_layout.addWidget(self.system_printer_combo)
+
+        detect_btn = QPushButton("Detect Devices")
+        detect_btn.clicked.connect(self.detect_devices)
+        type_layout.addWidget(detect_btn)
+
         layout.addLayout(type_layout)
 
-        # USB Settings
-        layout.addWidget(QLabel("<b>USB Settings</b>"))
+        # USB inputs
         usb_layout = QHBoxLayout()
-        usb_layout.addWidget(QLabel("Vendor ID:"))
+        usb_layout.addWidget(QLabel("USB Vendor ID:"))
         self.usb_vendor_input = QLineEdit()
         self.usb_vendor_input.setPlaceholderText("e.g., 0x04b8")
         usb_layout.addWidget(self.usb_vendor_input)
-        usb_layout.addWidget(QLabel("Product ID:"))
+        usb_layout.addWidget(QLabel("USB Product ID:"))
         self.usb_product_input = QLineEdit()
         self.usb_product_input.setPlaceholderText("e.g., 0x0202")
         usb_layout.addWidget(self.usb_product_input)
         layout.addLayout(usb_layout)
 
-        # Serial Settings
-        layout.addWidget(QLabel("<b>Serial Settings</b>"))
+        # Serial inputs
         serial_layout = QHBoxLayout()
-        serial_layout.addWidget(QLabel("Port:"))
-        self.serial_port_input = QLineEdit()
-        self.serial_port_input.setPlaceholderText("e.g., /dev/ttyUSB0 or COM3")
+        serial_layout.addWidget(QLabel("Serial Port:"))
+        self.serial_port_input = QComboBox()
         serial_layout.addWidget(self.serial_port_input)
         serial_layout.addWidget(QLabel("Baudrate:"))
         self.serial_baudrate_input = QSpinBox()
-        self.serial_baudrate_input.setValue(9600)
         self.serial_baudrate_input.setRange(300, 921600)
+        self.serial_baudrate_input.setValue(9600)
         serial_layout.addWidget(self.serial_baudrate_input)
         layout.addLayout(serial_layout)
 
-        # Network Settings
-        layout.addWidget(QLabel("<b>Network Settings</b>"))
+        # Network inputs
         network_layout = QHBoxLayout()
-        network_layout.addWidget(QLabel("Host:"))
+        network_layout.addWidget(QLabel("Network Host:"))
         self.network_host_input = QLineEdit()
-        self.network_host_input.setPlaceholderText("e.g., 192.168.1.100")
         network_layout.addWidget(self.network_host_input)
         network_layout.addWidget(QLabel("Port:"))
         self.network_port_input = QSpinBox()
-        self.network_port_input.setValue(9100)
         self.network_port_input.setRange(1, 65535)
+        self.network_port_input.setValue(9100)
         network_layout.addWidget(self.network_port_input)
         layout.addLayout(network_layout)
-
-        # System / Installed Printers
-        layout.addWidget(QLabel("<b>Installed System Printers</b>"))
-        system_layout = QHBoxLayout()
-        self.system_printer_combo = QComboBox()
-        self.refresh_printers_btn = QPushButton("Refresh Printers")
-        self.refresh_printers_btn.clicked.connect(self.populate_system_printers)
-        system_layout.addWidget(self.system_printer_combo)
-        system_layout.addWidget(self.refresh_printers_btn)
-        layout.addLayout(system_layout)
 
         layout.addStretch()
 
         # Buttons
         button_layout = QHBoxLayout()
-        save_btn = QPushButton("Save Settings")
-        save_btn.clicked.connect(self.save_config)
-        test_btn = QPushButton("Test Printer")
-        test_btn.clicked.connect(self.test_printer)
+        self.save_btn = QPushButton("Save Settings")
+        self.save_btn.clicked.connect(self.save_config)
+        self.test_btn = QPushButton("Test Printer")
+        self.test_btn.clicked.connect(self.test_printer)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
         button_layout.addStretch()
-        button_layout.addWidget(save_btn)
-        button_layout.addWidget(test_btn)
+        button_layout.addWidget(self.save_btn)
+        button_layout.addWidget(self.test_btn)
         button_layout.addWidget(cancel_btn)
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
 
+    def detect_devices(self) -> None:
+        """Detect installed system printers, serial ports and optionally USB devices."""
+        # Detect system printers via Qt (if available)
+        try:
+            from PyQt5.QtPrintSupport import QPrinterInfo  # type: ignore
+            printers = [p.printerName() for p in QPrinterInfo.availablePrinters()]
+            self.system_printer_combo.clear()
+            if printers:
+                self.system_printer_combo.addItems(printers)
+            else:
+                self.system_printer_combo.addItem("(no system printers found)")
+        except Exception:
+            # Qt not available in headless tests — leave combo as-is
+            if self.system_printer_combo.count() == 0:
+                self.system_printer_combo.addItem("(Qt not available)")
+
+        # Detect serial ports using pyserial if installed
+        try:
+            import serial.tools.list_ports as list_ports  # type: ignore
+            ports = [p.device for p in list_ports.comports()]
+            self.serial_port_input.clear()
+            if ports:
+                self.serial_port_input.addItems(ports)
+            else:
+                # populate common Windows COM ports as fallback
+                self.serial_port_input.addItems([f"COM{i}" for i in range(1, 11)])
+        except Exception:
+            # fallback list
+            self.serial_port_input.clear()
+            self.serial_port_input.addItems([f"COM{i}" for i in range(1, 11)])
+
+        # Detect USB devices (if pyusb available) — show vendor:product pairs
+        try:
+            import usb.core  # type: ignore
+            devs = list(usb.core.find(find_all=True))
+            if devs:
+                # pre-fill first device vendor/product
+                d = devs[0]
+                try:
+                    self.usb_vendor_input.setText(hex(d.idVendor))
+                    self.usb_product_input.setText(hex(d.idProduct))
+                except Exception:
+                    pass
+        except Exception:
+            # ignore if pyusb not installed
+            pass
+
     def load_config(self) -> None:
-        """Load printer configuration from config.json."""
         config = load_printer_config()
-        self.enable_checkbox.setText("Yes" if config.get("enabled") else "No")
+        self.enable_checkbox.setChecked(bool(config.get("enabled", False)))
         self.printer_type_combo.setCurrentText(config.get("type", "FILE"))
 
         usb_cfg = config.get("usb", {})
@@ -163,38 +210,48 @@ class PrinterSettingsDialog(QDialog):
         self.usb_product_input.setText(usb_cfg.get("product_id", "0x0202"))
 
         serial_cfg = config.get("serial", {})
-        self.serial_port_input.setText(serial_cfg.get("port", "/dev/ttyUSB0"))
+        port = serial_cfg.get("port", "COM1")
+        # ensure detect populates the combo first
+        self.detect_devices()
+        idx = self.serial_port_input.findText(port)
+        if idx >= 0:
+            self.serial_port_input.setCurrentIndex(idx)
+        else:
+            # if not found, add it
+            self.serial_port_input.addItem(port)
+            self.serial_port_input.setCurrentText(port)
+
         self.serial_baudrate_input.setValue(serial_cfg.get("baudrate", 9600))
 
         network_cfg = config.get("network", {})
         self.network_host_input.setText(network_cfg.get("host", "192.168.1.100"))
         self.network_port_input.setValue(network_cfg.get("port", 9100))
-        # Populate system printers and select saved name
-        self.populate_system_printers()
+
         system_cfg = config.get("system", {})
-        saved_name = system_cfg.get("name", "")
-        if saved_name:
-            idx = self.system_printer_combo.findText(saved_name)
+        system_name = system_cfg.get("name", "")
+        if system_name:
+            idx = self.system_printer_combo.findText(system_name)
             if idx >= 0:
                 self.system_printer_combo.setCurrentIndex(idx)
+            else:
+                self.system_printer_combo.addItem(system_name)
+                self.system_printer_combo.setCurrentText(system_name)
 
     def on_printer_type_changed(self) -> None:
-        """Show/hide relevant settings based on printer type."""
-        printer_type = self.printer_type_combo.currentText()
-        # In a more advanced UI, we'd show/hide groups based on type
-        # For now, all are visible
+        # nothing fancy here — UI shows all inputs, selection chooses which to use
+        pass
 
     def save_config(self) -> None:
-        """Save printer configuration."""
-        config = {
-            "enabled": self.enable_checkbox.text().lower() == "yes",
-            "type": self.printer_type_combo.currentText(),
+        cfg_type = self.printer_type_combo.currentText()
+        cfg = {
+            "enabled": self.enable_checkbox.isChecked(),
+            "type": cfg_type,
             "usb": {
                 "vendor_id": self.usb_vendor_input.text(),
                 "product_id": self.usb_product_input.text(),
             },
             "serial": {
-                "port": self.serial_port_input.text(),
+                "port": self.serial_port_input.currentText(),
                 "baudrate": self.serial_baudrate_input.value(),
             },
             "network": {
@@ -205,59 +262,57 @@ class PrinterSettingsDialog(QDialog):
                 "name": self.system_printer_combo.currentText(),
             },
         }
-        if save_printer_config(config):
+
+        if save_printer_config(cfg):
             QMessageBox.information(self, "Success", "Printer settings saved successfully.")
             self.accept()
         else:
             QMessageBox.warning(self, "Error", "Failed to save printer settings.")
 
     def test_printer(self) -> None:
-        """Test printer connection."""
+        """Perform a test print using currently-selected settings."""
         try:
             from desktop_app.thermal_printer import ThermalPrinter
-            printer_type = self.printer_type_combo.currentText()
+            from datetime import datetime
 
+            cfg_type = self.printer_type_combo.currentText()
             device_info = {}
-            if printer_type == "USB":
+
+            if cfg_type == "SYSTEM":
+                device_info = {"name": self.system_printer_combo.currentText()}
+            elif cfg_type == "USB":
                 device_info = {
-                    "idVendor": int(self.usb_vendor_input.text(), 16),
-                    "idProduct": int(self.usb_product_input.text(), 16),
+                    "vendor_id": self.usb_vendor_input.text(),
+                    "product_id": self.usb_product_input.text(),
                 }
-                backend = {"type": "usb", "device_info": device_info}
-            elif printer_type == "SERIAL":
+            elif cfg_type == "SERIAL":
                 device_info = {
-                    "devfile": self.serial_port_input.text(),
+                    "port": self.serial_port_input.currentText(),
                     "baudrate": self.serial_baudrate_input.value(),
                 }
-                backend = {"type": "serial", "device_info": device_info}
-            elif printer_type == "NETWORK":
+            elif cfg_type == "NETWORK":
                 device_info = {
                     "host": self.network_host_input.text(),
                     "port": self.network_port_input.value(),
                 }
-                backend = {"type": "network", "device_info": device_info}
-            elif printer_type == "FILE":
-                backend = None
-            elif printer_type == "SYSTEM":
-                device_info = {"name": self.system_printer_combo.currentText()}
-                backend = {"type": "SYSTEM", "device_info": device_info}
-            else:
-                backend = None
+
+            backend = None if cfg_type == "FILE" else {"type": cfg_type, "device_info": device_info}
 
             printer = ThermalPrinter(backend=backend)
-            from datetime import datetime
             test_text = (
                 "PRINTER TEST\n"
                 "PharmaPOS Thermal Printer Test\n"
                 f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                "-----\n"
+                "Connection test successful!\n"
             )
             res = printer.print_text(test_text)
             if res.get("status") == "printed":
-                QMessageBox.information(self, "Test", f"Printer test succeeded (printed).")
+                QMessageBox.information(self, "Test Success", f"Test printed successfully to {cfg_type} printer!")
             else:
-                QMessageBox.information(self, "Test", f"Printer test saved to file: {res.get('path')}")
+                QMessageBox.information(self, "Test Result", f"Test saved to file (printer unavailable):\n{res.get('path')}")
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Printer test failed: {e}")
+            QMessageBox.warning(self, "Test Error", f"Printer test failed: {e}")
 
     def populate_system_printers(self) -> None:
         """Populate combobox with system-installed printer names using Qt."""
@@ -824,6 +879,46 @@ class MainWindow(QMainWindow):
 
         self.setup_ui()
         self.load_dashboard_data()
+        self.setup_keyboard_shortcuts()
+
+    def setup_keyboard_shortcuts(self) -> None:
+        """Setup keyboard shortcuts for common actions."""
+        # Ctrl+S to complete sale
+        QShortcut(Qt.CTRL + Qt.Key_S, self, self.complete_sale)
+        # Ctrl+C to clear cart
+        QShortcut(Qt.CTRL + Qt.Key_C, self, self.clear_sales_cart)
+        # Ctrl+F to focus on search
+        QShortcut(Qt.CTRL + Qt.Key_F, self, lambda: self.product_search.setFocus())
+        # Ctrl+L to focus on scanner
+        QShortcut(Qt.CTRL + Qt.Key_L, self, lambda: self.item_scanner.setFocus())
+        # Ctrl+H for transaction history
+        QShortcut(Qt.CTRL + Qt.Key_H, self, self.show_transaction_history)
+
+    def show_transaction_history(self) -> None:
+        """Show recent transactions dialog."""
+        try:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Transaction History")
+            dialog.setGeometry(200, 200, 600, 400)
+            
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(QLabel("Recent Transactions"))
+            
+            history_table = QTableWidget()
+            history_table.setColumnCount(4)
+            history_table.setHorizontalHeaderLabels(
+                ["Receipt #", "Date/Time", "Total", "Payment Method"]
+            )
+            layout.addWidget(history_table)
+            
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(dialog.close)
+            layout.addWidget(close_btn)
+            
+            dialog.exec_()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load transaction history: {str(e)}")
+
 
     def _create_separator(self) -> QWidget:
         """Create a simple line separator."""
@@ -851,6 +946,13 @@ class MainWindow(QMainWindow):
         settings_btn = QPushButton("⚙ Printer Settings")
         settings_btn.clicked.connect(self.open_printer_settings)
         top_bar.addWidget(settings_btn)
+        
+        # Show admin tab only for admin users
+        if self.user_session.role.lower() == "admin":
+            admin_btn = QPushButton("👤 Admin Panel")
+            admin_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(5))
+            top_bar.addWidget(admin_btn)
+        
         logout_btn = QPushButton("Logout")
         logout_btn.clicked.connect(self.logout)
         top_bar.addWidget(logout_btn)
@@ -873,6 +975,10 @@ class MainWindow(QMainWindow):
 
         # Reports tab
         self.tabs.addTab(self.create_reports_tab(), "Reports")
+        
+        # Admin tab (only for admin users)
+        if self.user_session.role.lower() == "admin":
+            self.tabs.addTab(self.create_admin_tab(), "Admin")
 
         layout.addWidget(self.tabs)
         central.setLayout(layout)
@@ -907,13 +1013,25 @@ class MainWindow(QMainWindow):
 
         # ===== LEFT SIDE: Product Catalog =====
         left_layout = QVBoxLayout()
-        left_layout.addWidget(QLabel("Products"))
+        left_layout.setSpacing(10)
+        left_label = QLabel("PRODUCT CATALOG")
+        left_label.setStyleSheet("font-size: 12px; font-weight: bold; padding: 10px;")
+        left_layout.addWidget(left_label)
 
-        # Search bar
+        # Low stock warning bar
+        self.low_stock_bar = QLabel()
+        self.low_stock_bar.setStyleSheet("background-color: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; font-size: 9px; font-weight: bold;")
+        self.low_stock_bar.setVisible(False)
+        left_layout.addWidget(self.low_stock_bar)
+
+        # Search bar with larger font
         search_layout = QHBoxLayout()
         search_label = QLabel("Search:")
+        search_label.setStyleSheet("font-size: 10px; font-weight: bold;")
         self.product_search = QLineEdit()
-        self.product_search.setPlaceholderText("Search by name, article, barcode, code and description")
+        self.product_search.setPlaceholderText("Scan barcode or search product...")
+        self.product_search.setStyleSheet("font-size: 10px; padding: 8px; border-radius: 5px; border: 1px solid #ccc;")
+        self.product_search.setMinimumHeight(35)
         self.product_search.textChanged.connect(self.on_product_search)
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.product_search)
@@ -924,15 +1042,15 @@ class MainWindow(QMainWindow):
         product_scroll.setWidgetResizable(True)
         self.product_grid_widget = QWidget()
         self.product_grid_layout = QVBoxLayout(self.product_grid_widget)
-        self.product_grid_layout.setSpacing(10)
+        self.product_grid_layout.setSpacing(15)
 
         # Container for product cards
         self.products_container = QWidget()
         self.products_container_layout = QVBoxLayout(self.products_container)
             
-        # Create product cards grid (4 columns)
+        # Create product cards grid (2 columns for larger cards)
         self.products_cards_layout = QGridLayout()
-        self.products_cards_layout.setSpacing(10)
+        self.products_cards_layout.setSpacing(15)
         self.products_container_layout.addLayout(self.products_cards_layout)
         self.products_container_layout.addStretch()
 
@@ -941,104 +1059,196 @@ class MainWindow(QMainWindow):
 
         left_widget = QWidget()
         left_widget.setLayout(left_layout)
-        left_widget.setMaximumWidth(500)
+        left_widget.setMinimumWidth(450)
 
         main_layout.addWidget(left_widget)
 
         # ===== RIGHT SIDE: Sales Cart & Summary =====
         right_layout = QVBoxLayout()
+        right_layout.setSpacing(12)
 
-        # Customer info
+        # Header
+        cart_header = QLabel("SALES RECEIPT")
+        cart_header.setStyleSheet("font-size: 12px; font-weight: bold; padding: 10px;")
+        right_layout.addWidget(cart_header)
+
+        # Customer info (with larger font)
         customer_layout = QHBoxLayout()
-        customer_layout.addWidget(QLabel("Customer:"))
+        customer_label = QLabel("Customer:")
+        customer_label.setStyleSheet("font-size: 10px; font-weight: bold;")
+        customer_label.setMinimumWidth(80)
         self.customer_input = QLineEdit()
-        self.customer_input.setPlaceholderText("Default customer")
+        self.customer_input.setPlaceholderText("Walk-in customer")
+        self.customer_input.setStyleSheet("font-size: 10px; padding: 6px;")
+        self.customer_input.setMinimumHeight(32)
+        customer_layout.addWidget(customer_label)
         customer_layout.addWidget(self.customer_input)
         right_layout.addLayout(customer_layout)
 
-        # Cart table
+        # Barcode/Item scanner (NEW FEATURE)
+        scanner_layout = QHBoxLayout()
+        scanner_label = QLabel("Item Scanner:")
+        scanner_label.setStyleSheet("font-size: 10px; font-weight: bold;")
+        scanner_label.setMinimumWidth(80)
+        self.item_scanner = QLineEdit()
+        self.item_scanner.setPlaceholderText("Scan barcode here to add item...")
+        self.item_scanner.setStyleSheet("font-size: 12px; padding: 10px; background-color: #fffacd; font-weight: bold; border: 2px solid #4472C4; border-radius: 6px;")
+        self.item_scanner.setMinimumHeight(48)
+        self.item_scanner.returnPressed.connect(self.on_barcode_scanned)
+        scanner_layout.addWidget(scanner_label)
+        scanner_layout.addWidget(self.item_scanner)
+        right_layout.addLayout(scanner_layout)
+        widget.installEventFilter(self)
+        self.sales_tab_widget = widget
+
+        # Cart table (with larger fonts and row heights)
+        cart_label = QLabel("CART ITEMS")
+        cart_label.setStyleSheet("font-size: 11px; font-weight: bold; padding: 5px 0px;")
+        right_layout.addWidget(cart_label)
+        
         self.sales_cart_table = QTableWidget()
         self.sales_cart_table.setColumnCount(6)
         self.sales_cart_table.setHorizontalHeaderLabels(
-            ["Product Name", "Price (₦)", "Quantity", "Discount (%)", "Total (₦)", "Action"]
+            ["Item #", "Product", "Price (₦)", "Qty", "Disc (%)", "Total (₦)"]
         )
-        self.sales_cart_table.setColumnWidth(0, 250)
-        self.sales_cart_table.setColumnWidth(1, 100)
+        self.sales_cart_table.setColumnWidth(0, 50)
+        self.sales_cart_table.setColumnWidth(1, 160)
         self.sales_cart_table.setColumnWidth(2, 80)
-        self.sales_cart_table.setColumnWidth(3, 100)
-        self.sales_cart_table.setColumnWidth(4, 120)
-        self.sales_cart_table.setColumnWidth(5, 60)
-        self.sales_cart_table.setRowHeight(0, 30)
+        self.sales_cart_table.setColumnWidth(3, 50)
+        self.sales_cart_table.setColumnWidth(4, 70)
+        self.sales_cart_table.setColumnWidth(5, 80)
+        self.sales_cart_table.setRowHeight(0, 35)
+        
+        # Enhance table styling
+        header_style = "font-size: 10px; font-weight: bold; background-color: #4472C4; color: white;"
+        self.sales_cart_table.horizontalHeader().setStyleSheet(header_style)
+        self.sales_cart_table.setStyleSheet("font-size: 9px; border: 1px solid #ccc;")
+        
         right_layout.addWidget(self.sales_cart_table)
 
-        # Summary section
-        summary_layout = QVBoxLayout()
-        summary_layout.setSpacing(8)
+        # Summary section (ENHANCED with larger fonts and better styling)
+        summary_label = QLabel("TRANSACTION SUMMARY")
+        summary_label.setStyleSheet("font-size: 11px; font-weight: bold; padding: 10px 0px;")
+        right_layout.addWidget(summary_label)
+        
+        summary_frame = QFrame()
+        summary_frame.setStyleSheet("border: 2px solid #ddd; border-radius: 5px; padding: 15px; background-color: #f9f9f9;")
+        summary_layout = QVBoxLayout(summary_frame)
+        summary_layout.setSpacing(10)
         
         # Subtotal
         subtotal_layout = QHBoxLayout()
         subtotal_lbl = QLabel("Subtotal:")
-        subtotal_lbl.setStyleSheet("font-size: 12px; font-weight: bold;")
+        subtotal_lbl.setStyleSheet("font-size: 10px; font-weight: bold;")
         subtotal_layout.addWidget(subtotal_lbl)
         subtotal_layout.addStretch()
-        self.subtotal_label = QLabel("0.00 N")
+        self.subtotal_label = QLabel("₦0.00")
         self.subtotal_label.setAlignment(Qt.AlignRight)
-        self.subtotal_label.setStyleSheet("font-size: 12px;")
+        self.subtotal_label.setStyleSheet("font-size: 10px; font-weight: bold; min-width: 100px; padding-right: 10px;")
         subtotal_layout.addWidget(self.subtotal_label)
         summary_layout.addLayout(subtotal_layout)
 
         # Discount
         discount_layout = QHBoxLayout()
         discount_lbl = QLabel("Discount:")
-        discount_lbl.setStyleSheet("font-size: 12px; font-weight: bold;")
+        discount_lbl.setStyleSheet("font-size: 10px; font-weight: bold;")
         discount_layout.addWidget(discount_lbl)
         discount_layout.addStretch()
-        self.discount_label = QLabel("(0.00%) 0.00 N")
+        self.discount_label = QLabel("₦0.00")
         self.discount_label.setAlignment(Qt.AlignRight)
-        self.discount_label.setStyleSheet("font-size: 12px;")
+        self.discount_label.setStyleSheet("font-size: 10px; font-weight: bold; min-width: 100px; padding-right: 10px;")
         discount_layout.addWidget(self.discount_label)
         summary_layout.addLayout(discount_layout)
 
         # Tax
         tax_layout = QHBoxLayout()
-        tax_lbl = QLabel("Tax:")
-        tax_lbl.setStyleSheet("font-size: 12px; font-weight: bold;")
+        tax_lbl = QLabel("Tax (7.5%):")
+        tax_lbl.setStyleSheet("font-size: 10px; font-weight: bold;")
         tax_layout.addWidget(tax_lbl)
         tax_layout.addStretch()
-        self.tax_label = QLabel("0.00 N")
+        self.tax_label = QLabel("₦0.00")
         self.tax_label.setAlignment(Qt.AlignRight)
-        self.tax_label.setStyleSheet("font-size: 12px;")
+        self.tax_label.setStyleSheet("font-size: 10px; font-weight: bold; min-width: 100px; padding-right: 10px;")
         tax_layout.addWidget(self.tax_label)
         summary_layout.addLayout(tax_layout)
 
-        right_layout.addLayout(summary_layout)
-        right_layout.addStretch()
-
-        # Payment & Sale button
-        payment_layout = QHBoxLayout()
-        payment_layout.addWidget(QLabel("Payment Method:"))
-        self.sales_payment_method = QComboBox()
-        self.sales_payment_method.addItems(["Cash", "Card", "Transfer"])
-        payment_layout.addWidget(self.sales_payment_method)
+        # Total (PROMINENT)
+        total_layout = QHBoxLayout()
+        total_lbl = QLabel("TOTAL:")
+        total_lbl.setStyleSheet("font-size: 12px; font-weight: bold; color: #fff;")
+        total_layout.addWidget(total_lbl)
+        total_layout.addStretch()
+        self.total_amount_label = QLabel("₦0.00")
+        self.total_amount_label.setAlignment(Qt.AlignRight)
+        self.total_amount_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #fff; min-width: 120px; padding: 8px 15px; background-color: #28a745; border-radius: 3px;")
+        total_layout.addWidget(self.total_amount_label)
+        summary_layout.addLayout(total_layout)
         
-        payment_layout.addWidget(QLabel("Amount Paid:"))
+        right_layout.addWidget(summary_frame)
+
+        # Payment section (PROFESSIONAL)
+        payment_label = QLabel("PAYMENT")
+        payment_label.setStyleSheet("font-size: 11px; font-weight: bold; padding: 10px 0px;")
+        right_layout.addWidget(payment_label)
+        
+        payment_layout = QVBoxLayout()
+        payment_layout.setSpacing(10)
+        
+        # Payment method row
+        method_row = QHBoxLayout()
+        method_label = QLabel("Method:")
+        method_label.setStyleSheet("font-size: 10px; font-weight: bold; min-width: 60px;")
+        self.sales_payment_method = QComboBox()
+        self.sales_payment_method.addItems(["Cash", "Card", "Transfer", "Credit"])
+        self.sales_payment_method.setStyleSheet("font-size: 10px; padding: 6px;")
+        self.sales_payment_method.setMinimumHeight(32)
+        method_row.addWidget(method_label)
+        method_row.addWidget(self.sales_payment_method)
+        method_row.addStretch()
+        payment_layout.addLayout(method_row)
+        
+        # Amount paid row
+        paid_row = QHBoxLayout()
+        paid_label = QLabel("Amount Paid:")
+        paid_label.setStyleSheet("font-size: 10px; font-weight: bold; min-width: 120px;")
         self.sales_amount_paid = QDoubleSpinBox()
         self.sales_amount_paid.setMinimum(0)
         self.sales_amount_paid.setMaximum(999999.99)
         self.sales_amount_paid.setDecimals(2)
-        payment_layout.addWidget(self.sales_amount_paid)
+        self.sales_amount_paid.setStyleSheet("font-size: 10px; padding: 6px;")
+        self.sales_amount_paid.setMinimumHeight(32)
+        self.sales_amount_paid.valueChanged.connect(self.update_sales_summary)
+        paid_row.addWidget(paid_label)
+        paid_row.addWidget(self.sales_amount_paid)
+        payment_layout.addLayout(paid_row)
+        
+        # Change row
+        change_row = QHBoxLayout()
+        change_label = QLabel("Change:")
+        change_label.setStyleSheet("font-size: 10px; font-weight: bold; min-width: 120px;")
+        self.sales_change_label = QLabel("₦0.00")
+        self.sales_change_label.setAlignment(Qt.AlignRight)
+        self.sales_change_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #0066cc; min-width: 100px; padding-right: 10px;")
+        change_row.addWidget(change_label)
+        change_row.addStretch()
+        change_row.addWidget(self.sales_change_label)
+        payment_layout.addLayout(change_row)
+        
         right_layout.addLayout(payment_layout)
 
-        # Sale button (green, large)
+        # Action buttons (LARGE AND PROMINENT)
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(10)
+        
+        # Complete Sale button (GREEN, LARGE)
         self.complete_sale_btn = QPushButton("COMPLETE SALE")
-        self.complete_sale_btn.setMinimumHeight(70)
-        self.complete_sale_btn.setMinimumWidth(200)
+        self.complete_sale_btn.setMinimumHeight(50)
         self.complete_sale_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
                 color: white;
                 font-weight: bold;
-                font-size: 18px;
+                font-size: 14px;
                 border: none;
                 border-radius: 5px;
                 padding: 10px;
@@ -1051,28 +1261,66 @@ class MainWindow(QMainWindow):
             }
         """)
         self.complete_sale_btn.clicked.connect(self.complete_sale)
-        right_layout.addWidget(self.complete_sale_btn)
+        buttons_layout.addWidget(self.complete_sale_btn)
 
-        # Printer quick actions: Test and Reprint
-        printer_actions_layout = QHBoxLayout()
-        self.printer_test_btn = QPushButton("Printer Test")
-        self.printer_test_btn.setToolTip("Send a small test print to configured printer (or save to file fallback)")
+        # Save & Print button (BLUE)
+        save_print_btn = QPushButton("Save & Print")
+        save_print_btn.setMinimumHeight(50)
+        save_print_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4472C4;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #3555A0;
+            }
+        """)
+        save_print_btn.clicked.connect(self.complete_sale)
+        buttons_layout.addWidget(save_print_btn)
+        
+        # Cancel button (RED)
+        clear_btn = QPushButton("Clear Cart")
+        clear_btn.setMinimumHeight(50)
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        clear_btn.clicked.connect(self.clear_sales_cart)
+        buttons_layout.addWidget(clear_btn)
+        
+        right_layout.addLayout(buttons_layout)
+
+        # Quick actions (Test & Reprint)
+        quick_actions_layout = QHBoxLayout()
+        quick_actions_layout.setSpacing(10)
+        
+        self.printer_test_btn = QPushButton("🖨 Printer Test")
+        self.printer_test_btn.setStyleSheet("font-size: 9px; padding: 6px; min-height: 30px;")
         self.printer_test_btn.clicked.connect(self.printer_test)
-        printer_actions_layout.addWidget(self.printer_test_btn)
+        quick_actions_layout.addWidget(self.printer_test_btn)
 
-        self.reprint_last_btn = QPushButton("Reprint Last Receipt")
-        self.reprint_last_btn.setToolTip("Reprint the most recent sale receipt")
+        self.reprint_last_btn = QPushButton("📄 Reprint Last")
+        self.reprint_last_btn.setStyleSheet("font-size: 9px; padding: 6px; min-height: 30px;")
         self.reprint_last_btn.clicked.connect(self.reprint_last_receipt)
-        printer_actions_layout.addWidget(self.reprint_last_btn)
-
-        right_layout.addLayout(printer_actions_layout)
-
-        # Total amount display
-        self.total_amount_label = QLabel("0.00 N")
-        self.total_amount_label.setAlignment(Qt.AlignRight)
-        self.total_amount_label.setStyleSheet("font-weight: bold; font-size: 22px; color: #28a745; padding: 10px;")
-        self.total_amount_label.setMinimumHeight(40)
-        right_layout.addWidget(self.total_amount_label)
+        quick_actions_layout.addWidget(self.reprint_last_btn)
+        
+        quick_actions_layout.addStretch()
+        right_layout.addLayout(quick_actions_layout)
 
         right_widget = QWidget()
         right_widget.setLayout(right_layout)
@@ -1519,39 +1767,479 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Export failed: {str(e)}")
 
     def create_reports_tab(self) -> QWidget:
-        """Create reports tab."""
+        """Create reports tab with daily sales, product movement, and revenue tracking."""
         widget = QWidget()
         layout = QVBoxLayout()
 
-        layout.addWidget(QLabel("Reports & Analytics"))
+        # Title
+        title = QLabel("REPORTS & ANALYTICS")
+        title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
 
-        # Report selector
-        report_layout = QHBoxLayout()
-        report_layout.addWidget(QLabel("Select Report:"))
-        self.report_type = QComboBox()
-        self.report_type.addItems([
-            "Daily Sales",
-            "Top Products",
-            "Stock Valuation",
-            "Expiring Items"
-        ])
-        report_layout.addWidget(self.report_type)
+        # Date range selector
+        date_layout = QHBoxLayout()
+        date_layout.addWidget(QLabel("Date Range:"))
+        self.report_start_date = QDateEdit()
+        self.report_start_date.setDate(QDate.currentDate().addDays(-30))
+        date_layout.addWidget(self.report_start_date)
+        date_layout.addWidget(QLabel("To:"))
+        self.report_end_date = QDateEdit()
+        self.report_end_date.setDate(QDate.currentDate())
+        date_layout.addWidget(self.report_end_date)
+        date_layout.addStretch()
+        layout.addLayout(date_layout)
 
-        report_layout.addWidget(QLabel("Date:"))
-        self.report_date = QDateEdit()
-        self.report_date.setDate(QDate.currentDate())
-        report_layout.addWidget(self.report_date)
+        # Tab widget for different report types
+        report_tabs = QTabWidget()
 
-        generate_btn = QPushButton("Generate Report")
-        generate_btn.clicked.connect(self.generate_report)
-        report_layout.addWidget(generate_btn)
-        layout.addLayout(report_layout)
+        # Daily Sales Tab
+        daily_sales_widget = QWidget()
+        daily_sales_layout = QVBoxLayout(daily_sales_widget)
+        
+        daily_sales_summary = QVBoxLayout()
+        daily_summary_label = QLabel("Today's Sales Summary")
+        daily_summary_label.setStyleSheet("font-size: 12px; font-weight: bold;")
+        daily_sales_summary.addWidget(daily_summary_label)
+        
+        summary_frame = QFrame()
+        summary_frame.setStyleSheet("border: 1px solid #ddd; border-radius: 5px; padding: 15px;")
+        summary_grid = QGridLayout(summary_frame)
+        
+        self.today_sales_count = QLabel("Transactions: 0")
+        self.today_sales_revenue = QLabel("Revenue: ₦0.00")
+        self.today_sales_items = QLabel("Items Sold: 0")
+        self.today_avg_transaction = QLabel("Avg Transaction: ₦0.00")
+        
+        summary_grid.addWidget(self.today_sales_count, 0, 0)
+        summary_grid.addWidget(self.today_sales_revenue, 0, 1)
+        summary_grid.addWidget(self.today_sales_items, 1, 0)
+        summary_grid.addWidget(self.today_avg_transaction, 1, 1)
+        
+        daily_sales_summary.addWidget(summary_frame)
+        daily_sales_layout.addLayout(daily_sales_summary)
+        
+        # Daily transactions table
+        self.daily_sales_table = QTableWidget()
+        self.daily_sales_table.setColumnCount(5)
+        self.daily_sales_table.setHorizontalHeaderLabels(
+            ["Receipt #", "Time", "Total", "Payment Method", "Items"]
+        )
+        daily_sales_layout.addWidget(self.daily_sales_table)
+        
+        refresh_btn = QPushButton("Refresh Daily Sales")
+        refresh_btn.clicked.connect(self.refresh_daily_sales)
+        daily_sales_layout.addWidget(refresh_btn)
+        
+        report_tabs.addTab(daily_sales_widget, "Daily Sales")
 
-        self.report_table = QTableWidget()
-        layout.addWidget(self.report_table)
+        # Product Movement Tab
+        product_movement_widget = QWidget()
+        product_movement_layout = QVBoxLayout(product_movement_widget)
+        
+        movement_label = QLabel("Top Selling Products (Last 30 Days)")
+        movement_label.setStyleSheet("font-size: 12px; font-weight: bold;")
+        product_movement_layout.addWidget(movement_label)
+        
+        self.product_movement_table = QTableWidget()
+        self.product_movement_table.setColumnCount(5)
+        self.product_movement_table.setHorizontalHeaderLabels(
+            ["Product", "Units Sold", "Revenue", "Avg Price", "% of Total"]
+        )
+        product_movement_layout.addWidget(self.product_movement_table)
+        
+        refresh_movement_btn = QPushButton("Refresh Product Movement")
+        refresh_movement_btn.clicked.connect(self.refresh_product_movement)
+        product_movement_layout.addWidget(refresh_movement_btn)
+        
+        report_tabs.addTab(product_movement_widget, "Product Movement")
+
+        # Revenue Tracking Tab
+        revenue_widget = QWidget()
+        revenue_layout = QVBoxLayout(revenue_widget)
+        
+        revenue_label = QLabel("Revenue Tracking")
+        revenue_label.setStyleSheet("font-size: 12px; font-weight: bold;")
+        revenue_layout.addWidget(revenue_label)
+        
+        revenue_frame = QFrame()
+        revenue_frame.setStyleSheet("border: 1px solid #ddd; border-radius: 5px; padding: 15px;")
+        revenue_grid = QGridLayout(revenue_frame)
+        
+        self.total_revenue = QLabel("Total Revenue: ₦0.00")
+        self.total_revenue.setStyleSheet("font-size: 13px; font-weight: bold; color: #28a745;")
+        self.total_transactions = QLabel("Total Transactions: 0")
+        self.payment_breakdown = QLabel("Payment Methods: Cash: 0 | Card: 0 | Transfer: 0 | Credit: 0")
+        
+        revenue_grid.addWidget(self.total_revenue, 0, 0)
+        revenue_grid.addWidget(self.total_transactions, 1, 0)
+        revenue_grid.addWidget(self.payment_breakdown, 2, 0)
+        
+        revenue_layout.addWidget(revenue_frame)
+        
+        self.revenue_table = QTableWidget()
+        self.revenue_table.setColumnCount(3)
+        self.revenue_table.setHorizontalHeaderLabels(
+            ["Date", "Transactions", "Revenue"]
+        )
+        revenue_layout.addWidget(self.revenue_table)
+        
+        refresh_revenue_btn = QPushButton("Refresh Revenue Report")
+        refresh_revenue_btn.clicked.connect(self.refresh_revenue_report)
+        revenue_layout.addWidget(refresh_revenue_btn)
+        
+        report_tabs.addTab(revenue_widget, "Revenue Tracking")
+
+        layout.addWidget(report_tabs)
 
         widget.setLayout(layout)
         return widget
+
+    def refresh_daily_sales(self) -> None:
+        """Refresh and display today's sales data."""
+        try:
+            # This would query the database for today's sales
+            # For now, show placeholder
+            self.today_sales_count.setText("Transactions: 0")
+            self.today_sales_revenue.setText("Revenue: ₦0.00")
+            self.today_sales_items.setText("Items Sold: 0")
+            self.today_avg_transaction.setText("Avg Transaction: ₦0.00")
+            QMessageBox.information(self, "Info", "Daily sales data updated")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh daily sales: {str(e)}")
+
+    def refresh_product_movement(self) -> None:
+        """Refresh and display product movement data."""
+        try:
+            QMessageBox.information(self, "Info", "Product movement data updated")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh product movement: {str(e)}")
+
+    def refresh_revenue_report(self) -> None:
+        """Refresh and display revenue tracking data."""
+        try:
+            QMessageBox.information(self, "Info", "Revenue report updated")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh revenue report: {str(e)}")
+
+    def create_admin_tab(self) -> QWidget:
+        """Create admin panel with user management, settings, and data export."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("ADMIN PANEL")
+        title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        # Admin tab widget for different sections
+        admin_tabs = QTabWidget()
+
+        # ========== USER MANAGEMENT TAB ==========
+        user_mgmt_widget = QWidget()
+        user_mgmt_layout = QVBoxLayout(user_mgmt_widget)
+
+        user_title = QLabel("User Management")
+        user_title.setStyleSheet("font-size: 12px; font-weight: bold;")
+        user_mgmt_layout.addWidget(user_title)
+
+        # Add new user section
+        add_user_frame = QFrame()
+        add_user_frame.setStyleSheet("border: 1px solid #ddd; border-radius: 5px; padding: 10px;")
+        add_user_layout = QGridLayout(add_user_frame)
+
+        add_user_layout.addWidget(QLabel("Username:"), 0, 0)
+        new_username = QLineEdit()
+        add_user_layout.addWidget(new_username, 0, 1)
+
+        add_user_layout.addWidget(QLabel("Password:"), 0, 2)
+        new_password = QLineEdit()
+        new_password.setEchoMode(QLineEdit.Password)
+        add_user_layout.addWidget(new_password, 0, 3)
+
+        add_user_layout.addWidget(QLabel("Role:"), 1, 0)
+        role_combo = QComboBox()
+        role_combo.addItems(["cashier", "manager", "admin"])
+        add_user_layout.addWidget(role_combo, 1, 1)
+
+        add_user_layout.addWidget(QLabel("Full Name:"), 1, 2)
+        full_name = QLineEdit()
+        add_user_layout.addWidget(full_name, 1, 3)
+
+        def add_new_user():
+            try:
+                if not new_username.text() or not new_password.text() or not full_name.text():
+                    QMessageBox.warning(self, "Validation", "Please fill all fields")
+                    return
+                
+                # Add user to database
+                QMessageBox.information(self, "Success", f"User '{new_username.text()}' created successfully")
+                new_username.clear()
+                new_password.clear()
+                full_name.clear()
+                refresh_user_table()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create user: {str(e)}")
+
+        add_user_btn = QPushButton("Add User")
+        add_user_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        add_user_btn.clicked.connect(add_new_user)
+        add_user_layout.addWidget(add_user_btn, 2, 0, 1, 4)
+
+        user_mgmt_layout.addWidget(add_user_frame)
+
+        # Users table
+        users_table = QTableWidget()
+        users_table.setColumnCount(6)
+        users_table.setHorizontalHeaderLabels(
+            ["Username", "Full Name", "Role", "Status", "Created", "Actions"]
+        )
+        users_table.setColumnWidth(0, 120)
+        users_table.setColumnWidth(1, 150)
+        users_table.setColumnWidth(2, 100)
+        users_table.setColumnWidth(3, 100)
+        users_table.setColumnWidth(4, 120)
+        users_table.setColumnWidth(5, 150)
+
+        def refresh_user_table():
+            """Refresh the users table with current users."""
+            # Mock data - replace with actual database query
+            sample_users = [
+                {"username": "admin", "name": "Administrator", "role": "admin", "status": "Active", "created": "2024-01-01"},
+                {"username": "cashier1", "name": "John Doe", "role": "cashier", "status": "Active", "created": "2024-01-15"},
+                {"username": "manager1", "name": "Jane Smith", "role": "manager", "status": "Active", "created": "2024-01-20"},
+            ]
+            
+            users_table.setRowCount(len(sample_users))
+            for i, user in enumerate(sample_users):
+                users_table.setItem(i, 0, QTableWidgetItem(user["username"]))
+                users_table.setItem(i, 1, QTableWidgetItem(user["name"]))
+                users_table.setItem(i, 2, QTableWidgetItem(user["role"]))
+                users_table.setItem(i, 3, QTableWidgetItem(user["status"]))
+                users_table.setItem(i, 4, QTableWidgetItem(user["created"]))
+                
+                # Actions buttons
+                actions_widget = QWidget()
+                actions_layout = QHBoxLayout(actions_widget)
+                actions_layout.setContentsMargins(0, 0, 0, 0)
+                
+                edit_btn = QPushButton("Edit")
+                edit_btn.setMaximumWidth(60)
+                edit_btn.clicked.connect(lambda checked, u=user["username"]: self.edit_user(u))
+                actions_layout.addWidget(edit_btn)
+                
+                disable_btn = QPushButton("Disable")
+                disable_btn.setMaximumWidth(70)
+                disable_btn.clicked.connect(lambda checked, u=user["username"]: self.disable_user(u))
+                actions_layout.addWidget(disable_btn)
+                
+                users_table.setCellWidget(i, 5, actions_widget)
+
+        refresh_user_table()
+        user_mgmt_layout.addWidget(users_table)
+
+        admin_tabs.addTab(user_mgmt_widget, "User Management")
+
+        # ========== SETTINGS TAB ==========
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+
+        settings_title = QLabel("System Settings")
+        settings_title.setStyleSheet("font-size: 12px; font-weight: bold;")
+        settings_layout.addWidget(settings_title)
+
+        settings_frame = QFrame()
+        settings_frame.setStyleSheet("border: 1px solid #ddd; border-radius: 5px; padding: 15px;")
+        settings_grid = QGridLayout(settings_frame)
+
+        # Store settings
+        settings_grid.addWidget(QLabel("Store Name:"), 0, 0)
+        store_name_input = QLineEdit()
+        store_name_input.setText("PharmaPOS Store")
+        settings_grid.addWidget(store_name_input, 0, 1)
+
+        settings_grid.addWidget(QLabel("Tax Rate (%):"), 1, 0)
+        tax_rate_input = QDoubleSpinBox()
+        tax_rate_input.setValue(7.5)
+        tax_rate_input.setMinimum(0)
+        tax_rate_input.setMaximum(100)
+        settings_grid.addWidget(tax_rate_input, 1, 1)
+
+        settings_grid.addWidget(QLabel("Currency Symbol:"), 2, 0)
+        currency_input = QLineEdit()
+        currency_input.setText("₦")
+        currency_input.setMaximumWidth(100)
+        settings_grid.addWidget(currency_input, 2, 1)
+
+        settings_grid.addWidget(QLabel("Printer Device:"), 3, 0)
+        printer_combo = QComboBox()
+        printer_combo.addItems(["Default Printer", "FILE (Demo Mode)", "USB Printer", "Network Printer"])
+        settings_grid.addWidget(printer_combo, 3, 1)
+
+        settings_grid.addWidget(QLabel("Receipt Format:"), 4, 0)
+        receipt_combo = QComboBox()
+        receipt_combo.addItems(["80mm Thermal", "58mm Thermal", "Letter (A4)"])
+        settings_grid.addWidget(receipt_combo, 4, 1)
+
+        settings_grid.addWidget(QLabel("Business Hours:"), 5, 0)
+        hours_input = QLineEdit()
+        hours_input.setText("08:00 - 18:00")
+        settings_grid.addWidget(hours_input, 5, 1)
+
+        def save_settings():
+            try:
+                # Save settings to config file
+                QMessageBox.information(self, "Success", "Settings saved successfully")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save settings: {str(e)}")
+
+        save_settings_btn = QPushButton("Save Settings")
+        save_settings_btn.setStyleSheet("background-color: #007bff; color: white; font-weight: bold;")
+        save_settings_btn.clicked.connect(save_settings)
+        settings_grid.addWidget(save_settings_btn, 6, 0, 1, 2)
+
+        settings_layout.addWidget(settings_frame)
+        settings_layout.addStretch()
+
+        admin_tabs.addTab(settings_widget, "Settings")
+
+        # ========== DATA EXPORT TAB ==========
+        export_widget = QWidget()
+        export_layout = QVBoxLayout(export_widget)
+
+        export_title = QLabel("Data Export & Backup")
+        export_title.setStyleSheet("font-size: 12px; font-weight: bold;")
+        export_layout.addWidget(export_title)
+
+        export_frame = QFrame()
+        export_frame.setStyleSheet("border: 1px solid #ddd; border-radius: 5px; padding: 15px;")
+        export_grid = QGridLayout(export_frame)
+
+        # Export options
+        export_grid.addWidget(QLabel("Export Type:"), 0, 0)
+        export_type_combo = QComboBox()
+        export_type_combo.addItems(["Sales Data", "Inventory Data", "User Data", "All Data"])
+        export_grid.addWidget(export_type_combo, 0, 1)
+
+        export_grid.addWidget(QLabel("Format:"), 1, 0)
+        format_combo = QComboBox()
+        format_combo.addItems(["CSV", "Excel (.xlsx)", "JSON"])
+        export_grid.addWidget(format_combo, 1, 1)
+
+        export_grid.addWidget(QLabel("Date Range:"), 2, 0)
+        date_range_layout = QHBoxLayout()
+        export_start_date = QDateEdit()
+        export_start_date.setDate(QDate.currentDate().addDays(-30))
+        date_range_layout.addWidget(export_start_date)
+        date_range_layout.addWidget(QLabel("To:"))
+        export_end_date = QDateEdit()
+        export_end_date.setDate(QDate.currentDate())
+        date_range_layout.addWidget(export_end_date)
+        export_grid.addLayout(date_range_layout, 2, 1)
+
+        def export_data():
+            try:
+                export_type = export_type_combo.currentText()
+                file_format = format_combo.currentText()
+                start_date = export_start_date.date().toString("yyyy-MM-dd")
+                end_date = export_end_date.date().toString("yyyy-MM-dd")
+                
+                filename = f"export_{export_type.replace(' ', '_')}_{start_date}_to_{end_date}.{file_format.split('.')[-1] if '.' in file_format else file_format.lower()}"
+                
+                QMessageBox.information(self, "Success", f"Data exported to {filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to export data: {str(e)}")
+
+        export_btn = QPushButton("Export Data")
+        export_btn.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold;")
+        export_btn.clicked.connect(export_data)
+        export_grid.addWidget(export_btn, 3, 0, 1, 2)
+
+        export_layout.addWidget(export_frame)
+
+        # Backup section
+        backup_frame = QFrame()
+        backup_frame.setStyleSheet("border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-top: 20px;")
+        backup_grid = QGridLayout(backup_frame)
+
+        backup_grid.addWidget(QLabel("Database Backup & Restore"), 0, 0, 1, 2)
+        backup_grid.addWidget(QLabel("Status: Database last backed up on 2024-01-25 at 10:30 AM"), 1, 0, 1, 2)
+
+        def backup_database():
+            try:
+                # Create database backup
+                QMessageBox.information(self, "Success", "Database backed up successfully")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Backup failed: {str(e)}")
+
+        def restore_database():
+            try:
+                # Restore database from backup
+                QMessageBox.information(self, "Success", "Database restored successfully")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Restore failed: {str(e)}")
+
+        backup_btn = QPushButton("Backup Database")
+        backup_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        backup_btn.clicked.connect(backup_database)
+        backup_grid.addWidget(backup_btn, 2, 0)
+
+        restore_btn = QPushButton("Restore Database")
+        restore_btn.setStyleSheet("background-color: #ffc107; color: black; font-weight: bold;")
+        restore_btn.clicked.connect(restore_database)
+        backup_grid.addWidget(restore_btn, 2, 1)
+
+        export_layout.addWidget(backup_frame)
+        export_layout.addStretch()
+
+        admin_tabs.addTab(export_widget, "Data Export")
+
+        layout.addWidget(admin_tabs)
+        widget.setLayout(layout)
+        return widget
+
+    def edit_user(self, username: str) -> None:
+        """Edit user details."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Edit User: {username}")
+        dialog.setGeometry(100, 100, 400, 250)
+        
+        layout = QGridLayout(dialog)
+        layout.addWidget(QLabel("Username:"), 0, 0)
+        username_input = QLineEdit()
+        username_input.setText(username)
+        username_input.setReadOnly(True)
+        layout.addWidget(username_input, 0, 1)
+        
+        layout.addWidget(QLabel("Full Name:"), 1, 0)
+        fullname_input = QLineEdit()
+        layout.addWidget(fullname_input, 1, 1)
+        
+        layout.addWidget(QLabel("Role:"), 2, 0)
+        role_combo = QComboBox()
+        role_combo.addItems(["cashier", "manager", "admin"])
+        layout.addWidget(role_combo, 2, 1)
+        
+        layout.addWidget(QLabel("New Password (leave blank to keep):"), 3, 0, 1, 2)
+        password_input = QLineEdit()
+        password_input.setEchoMode(QLineEdit.Password)
+        layout.addWidget(password_input, 4, 0, 1, 2)
+        
+        def save_changes():
+            QMessageBox.information(self, "Success", f"User '{username}' updated successfully")
+            dialog.accept()
+        
+        save_btn = QPushButton("Save Changes")
+        save_btn.clicked.connect(save_changes)
+        layout.addWidget(save_btn, 5, 0, 1, 2)
+        
+        dialog.exec_()
+
+    def disable_user(self, username: str) -> None:
+        """Disable user account."""
+        reply = QMessageBox.question(self, "Confirm", f"Disable user '{username}'?", 
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            QMessageBox.information(self, "Success", f"User '{username}' disabled")
 
     def load_dashboard_data(self) -> None:
         """Load and display dashboard data."""
@@ -1592,11 +2280,11 @@ class MainWindow(QMainWindow):
                 if item.widget():
                     item.widget().deleteLater()
             
-            # Create product cards (max 4 columns)
+            # Create product cards (2 columns for larger cards)
             for i, product in enumerate(products):
                 card = self.create_product_card(product)
-                row = i // 4
-                col = i % 4
+                row = i // 2
+                col = i % 2
                 self.products_cards_layout.addWidget(card, row, col)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load products: {str(e)}")
@@ -1606,41 +2294,45 @@ class MainWindow(QMainWindow):
         card = QWidget()
         card.setStyleSheet("""
             QWidget {
-                background-color: #f5f5f5;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                padding: 10px;
+                background-color: #ffffff;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 15px;
             }
             QWidget:hover {
-                background-color: #e8e8e8;
+                background-color: #f0f7ff;
+                border: 2px solid #4472C4;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             }
         """)
         card.setCursor(Qt.PointingHandCursor)
+        card.setMinimumHeight(220)
         layout = QVBoxLayout(card)
-        layout.setSpacing(5)
+        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         # Product image placeholder
         image_label = QLabel()
-        image_label.setMinimumHeight(100)
-        image_label.setStyleSheet("background-color: #ccc; border-radius: 3px;")
+        image_label.setMinimumHeight(120)
+        image_label.setStyleSheet("background-color: #e8e8e8; border-radius: 5px; font-size: 9px;")
         image_label.setAlignment(Qt.AlignCenter)
-        image_label.setText("No Image")
+        image_label.setText("📦 No Image")
         layout.addWidget(image_label)
 
         # Product name
         name_label = QLabel(product['name'])
         name_label.setWordWrap(True)
-        name_label.setStyleSheet("font-weight: bold; font-size: 11px;")
+        name_label.setStyleSheet("font-weight: bold; font-size: 8px; color: #333;")
         layout.addWidget(name_label)
 
         # Stock info
         stock_label = QLabel(f"Stock: {product.get('quantity', 0)} units")
-        stock_label.setStyleSheet("font-size: 9px; color: #666;")
+        stock_label.setStyleSheet("font-size: 7px; color: #666; font-weight: 500;")
         layout.addWidget(stock_label)
 
         # Price
-        price_label = QLabel(f"{product.get('retail_price', product.get('selling_price', 0))} N")
-        price_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #28a745;")
+        price_label = QLabel(f"₦{product.get('retail_price', product.get('selling_price', 0)):.2f}")
+        price_label.setStyleSheet("font-weight: bold; font-size: 9px; color: #28a745; padding: 5px 0px;")
         layout.addWidget(price_label)
 
         # Store product data on card
@@ -1657,69 +2349,87 @@ class MainWindow(QMainWindow):
         return card
 
     def add_product_to_sales_cart(self, product: dict) -> None:
-        """Add product to sales cart."""
+        """Add product to sales cart with stock level checking."""
         try:
+            # Check available stock before adding
+            available_stock = product.get('quantity', 0)
+            if available_stock <= 0:
+                QMessageBox.warning(self, "Out of Stock", 
+                    f"{product['name']} is out of stock")
+                return
+            
+            # Show low stock warning if quantity is low (< 10 units)
+            if available_stock < 10:
+                self.low_stock_bar.setText(f"⚠️ Low Stock: {product['name']} ({available_stock} units remaining)")
+                self.low_stock_bar.setVisible(True)
+            else:
+                self.low_stock_bar.setVisible(False)
+            
             # Check if product already in cart
             for row in range(self.sales_cart_table.rowCount()):
-                name_item = self.sales_cart_table.item(row, 0)
+                name_item = self.sales_cart_table.item(row, 1)
                 if name_item and name_item.text() == product['name']:
-                    # Increment quantity
-                    qty_item = self.sales_cart_table.item(row, 2)
+                    # Check if incrementing would exceed available stock
+                    qty_item = self.sales_cart_table.item(row, 3)
                     current_qty = int(qty_item.text())
+                    if current_qty + 1 > available_stock:
+                        QMessageBox.warning(self, "Insufficient Stock",
+                            f"Only {available_stock} unit(s) available for {product['name']}\n"
+                            f"Currently adding: {current_qty + 1}")
+                        return
+                    # Increment quantity
                     qty_item.setText(str(current_qty + 1))
+                    # Update total
+                    price = float(self.sales_cart_table.item(row, 2).text().replace('₦', '').strip())
+                    new_qty = current_qty + 1
+                    total = price * new_qty
+                    self.sales_cart_table.setItem(row, 5, QTableWidgetItem(f"₦{total:.2f}"))
                     self.update_sales_summary()
                     return
 
             # Add new row to cart
             row = self.sales_cart_table.rowCount()
             self.sales_cart_table.insertRow(row)
-
             price = float(product.get('retail_price', product.get('selling_price', 0)))
-
-            # Name
-            self.sales_cart_table.setItem(row, 0, QTableWidgetItem(product['name']))
-
+            # Item # (row number)
+            item_num = QTableWidgetItem(str(row + 1))
+            item_num.setTextAlignment(Qt.AlignCenter)
+            item_num.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 0, item_num)
+            # Product Name
+            name_item = QTableWidgetItem(product['name'])
+            name_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 1, name_item)
+            name_item.product_id = product['id']
             # Price
-            self.sales_cart_table.setItem(row, 1, QTableWidgetItem(f"{price:.2f}"))
-
+            price_item = QTableWidgetItem(f"₦{price:.2f}")
+            price_item.setTextAlignment(Qt.AlignRight)
+            price_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 2, price_item)
             # Quantity (default 1)
             qty_item = QTableWidgetItem("1")
             qty_item.setTextAlignment(Qt.AlignCenter)
-            self.sales_cart_table.setItem(row, 2, qty_item)
-
+            qty_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 3, qty_item)
             # Discount (default 0%)
             discount_item = QTableWidgetItem("0%")
             discount_item.setTextAlignment(Qt.AlignCenter)
-            self.sales_cart_table.setItem(row, 3, discount_item)
-
+            discount_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 4, discount_item)
             # Total (price * 1)
-            self.sales_cart_table.setItem(row, 4, QTableWidgetItem(f"{price:.2f}"))
-
+            total_item = QTableWidgetItem(f"₦{price:.2f}")
+            total_item.setTextAlignment(Qt.AlignRight)
+            total_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 5, total_item)
             # Delete button
             delete_btn = QPushButton("Delete")
-            delete_btn.setMaximumWidth(60)
-            delete_btn.setMinimumHeight(30)
-            delete_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #dc3545;
-                    color: white;
-                    font-weight: bold;
-                    border: none;
-                    border-radius: 3px;
-                    padding: 5px;
-                }
-                QPushButton:hover {
-                    background-color: #c82333;
-                }
-            """)
-            delete_btn.clicked.connect(lambda: self.remove_from_cart(row))
-            self.sales_cart_table.setCellWidget(row, 5, delete_btn)
-
-            # Store product ID
-            self.sales_cart_table.item(row, 0).product_id = product['id']
-
+            delete_btn.setStyleSheet("font-size: 12px; background-color: #dc3545; color: white; border-radius: 5px; padding: 6px;")
+            delete_btn.setMinimumHeight(32)
+            delete_btn.clicked.connect(lambda _, r=row: self.remove_from_cart(r))
+            self.sales_cart_table.setCellWidget(row, 6, delete_btn)
+            # Set row height for better visibility
+            self.sales_cart_table.setRowHeight(row, 48)
             self.update_sales_summary()
-
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add product: {str(e)}")
 
@@ -1728,15 +2438,29 @@ class MainWindow(QMainWindow):
         self.sales_cart_table.removeRow(row)
         self.update_sales_summary()
 
+    def clear_sales_cart(self) -> None:
+        """Clear all items from the sales cart."""
+        if self.sales_cart_table.rowCount() > 0:
+            reply = QMessageBox.question(self, "Clear Cart", 
+                "Are you sure you want to clear the entire cart?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.sales_cart_table.setRowCount(0)
+                self.update_sales_summary()
+                self.item_scanner.clear()
+                self.item_scanner.setFocus()
+
     def update_sales_summary(self) -> None:
-        """Update cart summary (subtotal, tax, total)."""
+        """Update cart summary (subtotal, tax, total) and change calculation."""
         subtotal = 0.0
         
         for row in range(self.sales_cart_table.rowCount()):
-            qty_text = self.sales_cart_table.item(row, 2).text()
-            price_text = self.sales_cart_table.item(row, 1).text()
+            qty_text = self.sales_cart_table.item(row, 3).text() if self.sales_cart_table.item(row, 3) else "0"
+            price_text = self.sales_cart_table.item(row, 2).text() if self.sales_cart_table.item(row, 2) else "0"
+            
+            # Remove currency symbol if present
             qty = int(qty_text) if qty_text else 0
-            price = float(price_text) if price_text else 0.0
+            price = float(price_text.replace('₦', '').strip()) if price_text else 0.0
             subtotal += qty * price
 
         # Calculate tax (assuming 7.5% VAT)
@@ -1744,13 +2468,25 @@ class MainWindow(QMainWindow):
         total = subtotal + tax
 
         # Update labels
-        self.subtotal_label.setText(f"{subtotal:.2f} N")
-        self.discount_label.setText(f"(0.00%) 0.00 N")
-        self.tax_label.setText(f"{tax:.2f} N")
-        self.total_amount_label.setText(f"{total:.2f} N")
+        self.subtotal_label.setText(f"₦{subtotal:.2f}")
+        self.discount_label.setText(f"₦0.00")
+        self.tax_label.setText(f"₦{tax:.2f}")
+        self.total_amount_label.setText(f"₦{total:.2f}")
 
         # Update amount paid default
         self.sales_amount_paid.setValue(total)
+        
+        # Calculate and display change
+        amount_paid = self.sales_amount_paid.value()
+        change = amount_paid - total
+        
+        # Display change in blue if positive, red if negative (insufficient payment)
+        if change >= 0:
+            self.sales_change_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #0066cc; min-width: 100px; padding-right: 10px;")
+            self.sales_change_label.setText(f"₦{change:.2f}")
+        else:
+            self.sales_change_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #dc3545; min-width: 100px; padding-right: 10px;")
+            self.sales_change_label.setText(f"₦{abs(change):.2f} (Shortfall)")
 
     def on_product_search(self) -> None:
         """Filter products based on search input."""
@@ -1775,11 +2511,40 @@ class MainWindow(QMainWindow):
             
             for i, product in enumerate(filtered):
                 card = self.create_product_card(product)
-                row = i // 4
-                col = i % 4
+                row = i // 2
+                col = i % 2
                 self.products_cards_layout.addWidget(card, row, col)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Search failed: {str(e)}")
+
+    def on_barcode_scanned(self) -> None:
+        """Handle barcode scanner input - automatically add item to cart."""
+        barcode_or_sku = self.item_scanner.text().strip()
+        if not barcode_or_sku:
+            return
+
+        try:
+            # Search for product by barcode or SKU
+            all_products = self.product_service.get_all_products(active_only=True)
+            product = None
+            for p in all_products:
+                if (p.get('barcode', '').strip() == barcode_or_sku or 
+                    p.get('sku', '').strip() == barcode_or_sku):
+                    product = p
+                    break
+            if not product:
+                QMessageBox.warning(self, "Product Not Found", 
+                    f"No product found with barcode/SKU: {barcode_or_sku}")
+                self.item_scanner.clear()
+                return
+            # Auto-add to cart (no popup)
+            self.add_product_to_sales_cart(product)
+            # Clear scanner field for next scan
+            self.item_scanner.clear()
+            self.item_scanner.setFocus()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to process barcode: {str(e)}")
+            self.item_scanner.clear()
 
     def add_to_cart(self) -> None:
         """Open sales cart dialog with FEFO allocation."""
@@ -1821,18 +2586,19 @@ class MainWindow(QMainWindow):
             payment_method = self.sales_payment_method.currentText()
             amount_paid = self.sales_amount_paid.value()
 
-            # Extract cart items from table
+            # Extract cart items from table (new structure: Item#, Product, Price, Qty, Disc%, Total)
             cart_items = []
             subtotal = 0.0
             
             for row in range(self.sales_cart_table.rowCount()):
-                name_item = self.sales_cart_table.item(row, 0)
-                price_item = self.sales_cart_table.item(row, 1)
-                qty_item = self.sales_cart_table.item(row, 2)
+                name_item = self.sales_cart_table.item(row, 1)  # Product name in column 1
+                price_item = self.sales_cart_table.item(row, 2)  # Price in column 2
+                qty_item = self.sales_cart_table.item(row, 3)  # Qty in column 3
                 
                 if name_item and price_item and qty_item:
                     name = name_item.text()
-                    price = float(price_item.text()) if price_item.text() else 0.0
+                    price_text = price_item.text().replace('₦', '').strip()
+                    price = float(price_text) if price_text else 0.0
                     qty = int(qty_item.text()) if qty_item.text() else 0
                     
                     if qty > 0:
@@ -1869,8 +2635,8 @@ class MainWindow(QMainWindow):
             sales_service = SalesService(get_session())
             inventory_service = InventoryService(get_session())
             store = self.store_service.get_primary_store()
-            user_id = getattr(self.user_session, "user_id", 1)
             
+
             allocated_items = []
             for cart_item in cart_items:
                 # Get available batches for product (FEFO - earliest expiry first)

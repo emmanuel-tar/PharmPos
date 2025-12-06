@@ -1,0 +1,23 @@
+Main Pharmacy
+Lagos, Nigeria
+-
+Receipt #: RCP-1-20251205091639-00008
+2025-12-05 09:16:41
+-
+Test Painkiller
+  4 x 150.00 = 600.00
+Ibuprofen 400mg
+  1 x 80.00 = 80.00
+Amoxicillin 250mg
+  1 x 100.00 = 100.00
+Paracetamol 500mg
+  1 x 150.00 = 150.00
+-
+Subtotal: 930.00
+Tax: 69.75
+Total: 999.75
+Payment: Cash
+Paid: 999.75
+Change: 0.00
+-
+Thank you for your purchase!

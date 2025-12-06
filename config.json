@@ -7,12 +7,15 @@
       "product_id": "0x0202"
     },
     "serial": {
-      "port": "/dev/ttyUSB0",
+      "port": "COM1",
       "baudrate": 9600
     },
     "network": {
       "host": "192.168.1.100",
       "port": 9100
+    },
+    "system": {
+      "name": "Microsoft XPS Document Writer"
     }
   }
 }

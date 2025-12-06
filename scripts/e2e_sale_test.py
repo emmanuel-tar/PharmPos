@@ -5,6 +5,16 @@ Run: python scripts/e2e_sale_test.py
 from datetime import datetime, timedelta
 from decimal import Decimal
 import os
+import sys
+
+# Initialize QApplication for Qt (required for printing)
+try:
+    from PyQt5.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+except Exception:
+    pass  # PyQt5 not available or already initialized
 
 from desktop_app.database import init_db
 from desktop_app.models import get_session, ProductService, InventoryService, SalesService, StoreService
