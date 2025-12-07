@@ -1,0 +1,35 @@
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\schema.py", line 226, in _init_items
+    spwd = item._set_parent_with_dispatch
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute '_set_parent_with_dispatch'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_sync_id.py", line 10, in <module>
+    from desktop_app.database import init_db, get_engine, stores, users, products, product_batches, sales, stock_transfers, stock_reservations, backorders, inventory_reconciliations
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\__init__.py", line 11, in <module>
+    from desktop_app.database import init_db, get_engine, metadata
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\database.py", line 266, in <module>
+    stock_transfers = Table(
+                      ^^^^^^
+  File "<string>", line 2, in __new__
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\util\deprecations.py", line 281, in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\schema.py", line 429, in __new__
+    return cls._new(*args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\schema.py", line 483, in _new
+    with util.safe_reraise():
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\schema.py", line 479, in _new
+    table.__init__(name, metadata, *args, _no_init=False, **kw)  # type: ignore[misc] # noqa: E501
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\schema.py", line 873, in __init__
+    self._init_items(
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\schema.py", line 228, in _init_items
+    raise exc.ArgumentError(
+sqlalchemy.exc.ArgumentError: 'SchemaItem' object, such as a 'Column' or a 'Constraint' expected, got 'suppliers'

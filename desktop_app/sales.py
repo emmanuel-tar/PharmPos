@@ -76,7 +76,7 @@ class ReceiptGenerator:
 class PaymentProcessor:
     """Processes different payment methods."""
 
-    PAYMENT_METHODS = ["cash", "card", "transfer"]
+    PAYMENT_METHODS = ["cash", "card", "transfer", "paystack", "flutterwave"]
 
     @staticmethod
     def validate_payment(
@@ -187,6 +187,8 @@ class SalesTransaction:
         cart: List[dict],
         payment_method: str,
         amount_paid: Decimal,
+        payment_reference: Optional[str] = None,
+        gateway_response: Optional[str] = None,
     ) -> tuple[bool, str, Optional[dict]]:
         """Complete the sale transaction."""
         if not cart:
@@ -209,6 +211,8 @@ class SalesTransaction:
                 items=cart,
                 payment_method=payment_method,
                 amount_paid=amount_paid,
+                payment_reference=payment_reference,
+                gateway_response=gateway_response,
             )
             return True, "Sale completed successfully", sale
         except Exception as e:

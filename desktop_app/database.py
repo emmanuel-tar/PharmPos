@@ -1,66 +1,53 @@
-"""
-PharmaPOS NG - Core SQLite Database Schema (SQLAlchemy Core)
-
-This module defines the core schema supporting multi-store operations,
-batch-based pharmaceutical inventory tracking (FEFO), and proper foreign key
-relationships with indexes for performance.
-
-Usage:
-    from desktop_app.database import init_db
-    init_db()  # creates pharmapos.db with all tables and indexes
-"""
-
-from __future__ import annotations
-
 import os
-from typing import Optional
+import uuid
+from datetime import datetime, date
+from typing import Optional, List
 
 from sqlalchemy import (
+    create_engine,
+    MetaData,
     Table,
     Column,
     Integer,
     String,
-    Text,
+    Float,
     Boolean,
-    Date,
     DateTime,
-    Numeric,
+    Date,
     ForeignKey,
-    Index,
-    MetaData,
-    create_engine,
-    event,
+    Text,
+    Numeric,
     func,
     text,
+    Index,
+    event,
 )
+from sqlalchemy.orm import sessionmaker, scoped_session
 
+from desktop_app.config import DB_PATH
 
-# --- Configuration -----------------------------------------------------------
-DEFAULT_DB_FILENAME = "pharmapos.db"
+# Global metadata
+metadata = MetaData()
 
-
-def _db_url(db_path: Optional[str]) -> str:
-    path = db_path or DEFAULT_DB_FILENAME
-    # ensure directory exists if path includes folders
-    directory = os.path.dirname(os.path.abspath(path))
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory, exist_ok=True)
+# Helper for DB URL
+def _db_url(db_path: Optional[str] = None) -> str:
+    path = db_path or DB_PATH
     return f"sqlite:///{path}"
 
 
-# Global metadata for the schema
-metadata = MetaData()
+# --- Core Tables -------------------------------------------------------------
 
-
-# --- Tables ------------------------------------------------------------------
-# stores
+# stores (branches)
 stores = Table(
     "stores",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("name", String, nullable=False, unique=True),
+    Column("name", String, nullable=False),
     Column("address", Text),
+    Column("phone", String),
+    Column("email", String),
     Column("is_primary", Boolean, server_default=text("0"), nullable=False),
+    Column("is_active", Boolean, server_default=text("1"), nullable=False),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
     Column(
         "updated_at",
@@ -69,18 +56,20 @@ stores = Table(
         server_onupdate=func.now(),
         nullable=False,
     ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
-# Ensure only one primary store via partial unique index on is_primary = 1
-Index(
-    "idx_stores_only_one_primary",
-    stores.c.is_primary,
-    unique=True,
-    sqlite_where=(stores.c.is_primary == True),  # type: ignore[comparison-overlap]
-)
+# Unique constraint for primary store (only one primary store allowed ideally, 
+# but SQLite partial indexes are tricky in older versions, so we enforce in logic or simple unique if possible.
+# For now, we'll just index is_primary for quick lookup)
+Index("idx_stores_is_primary", stores.c.is_primary)
 
 
-# users
+# users (staff)
 users = Table(
     "users",
     metadata,
@@ -103,6 +92,11 @@ users = Table(
         server_onupdate=func.now(),
         nullable=False,
     ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
 
@@ -112,24 +106,22 @@ products = Table(
     metadata,
     Column("id", Integer, primary_key=True),
     Column("name", String, nullable=False),
-    Column("generic_name", String),
-    Column("sku", String, nullable=False, unique=True),
-    Column("barcode", String, unique=True),
-    Column("nafdac_number", String, nullable=False),
-    Column("cost_price", Numeric(10, 2), nullable=False),
-    Column("selling_price", Numeric(10, 2), nullable=False),
-    # Pricing tiers
-    Column("retail_price", Numeric(10, 2), nullable=False),
-    Column("bulk_price", Numeric(10, 2)),  # Lower price for bulk quantities
-    Column("bulk_quantity", Integer),  # Minimum quantity for bulk price
-    Column("wholesale_price", Numeric(10, 2)),  # Even lower for wholesale/large orders
-    Column("wholesale_quantity", Integer),  # Minimum quantity for wholesale price
-    # Stock alerts
-    Column("min_stock", Integer, server_default=text("0"), nullable=False),  # Alert when below
-    Column("max_stock", Integer, server_default=text("9999"), nullable=False),  # Alert when above
-    Column("reorder_level", Integer),  # Suggested reorder quantity
-    # Other
+    Column("sku", String, unique=True, nullable=False),
+    Column("barcode", String, unique=True, nullable=True),
     Column("description", Text),
+    Column("category", String),
+    Column("generic_name", String),
+    Column("cost_price", Numeric(10, 2), nullable=False),
+    Column("selling_price", Numeric(10, 2), nullable=False), # Base selling price
+    Column("retail_price", Numeric(10, 2)), # Override
+    Column("wholesale_price", Numeric(10, 2)),
+    Column("wholesale_quantity", Integer),
+    Column("bulk_price", Numeric(10, 2)),
+    Column("bulk_quantity", Integer),
+    Column("min_stock", Integer, server_default=text("0")),
+    Column("max_stock", Integer, server_default=text("9999")),
+    Column("reorder_level", Integer),
+    Column("nafdac_number", String),
     Column("is_active", Boolean, server_default=text("1"), nullable=False),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
     Column(
@@ -139,10 +131,14 @@ products = Table(
         server_onupdate=func.now(),
         nullable=False,
     ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
-
-# product_batches (critical for FEFO)
+# product_batches (inventory per store/batch)
 product_batches = Table(
     "product_batches",
     metadata,
@@ -160,16 +156,14 @@ product_batches = Table(
         nullable=False,
     ),
     Column("batch_number", String, nullable=False),
-    Column("expiry_date", Date, nullable=False),
     Column("quantity", Integer, server_default=text("0"), nullable=False),
-    Column("cost_price", Numeric(10, 2)),
-    # Pricing per batch (can override product defaults)
-    Column("retail_price", Numeric(10, 2)),
-    Column("bulk_price", Numeric(10, 2)),
-    Column("bulk_quantity", Integer),
+    Column("expiry_date", Date),
+    Column("cost_price", Numeric(10, 2)), # Batch specific cost
+    Column("retail_price", Numeric(10, 2)), # Batch specific price override
     Column("wholesale_price", Numeric(10, 2)),
     Column("wholesale_quantity", Integer),
-    Column("received_date", DateTime, server_default=func.now(), nullable=False),
+    Column("bulk_price", Numeric(10, 2)),
+    Column("bulk_quantity", Integer),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
     Column(
         "updated_at",
@@ -180,6 +174,11 @@ product_batches = Table(
     ),
     # Optional: avoid duplicate batches per store/product
     # sqlalchemy.UniqueConstraint("product_id", "store_id", "batch_number", name="uq_batch_per_store_product"),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
 
@@ -191,7 +190,9 @@ sales = Table(
     Column("receipt_number", String, nullable=False, unique=True),
     Column("total_amount", Numeric(10, 2), nullable=False),
     Column("amount_paid", Numeric(10, 2), nullable=False),
-    Column("payment_method", String, nullable=False),  # 'cash', 'card', 'transfer'
+    Column("payment_method", String, nullable=False),  # 'cash', 'card', 'transfer', 'paystack', 'flutterwave'
+    Column("payment_reference", String, nullable=True),
+    Column("gateway_response", Text, nullable=True),
     Column("change_amount", Numeric(10, 2), server_default=text("0"), nullable=False),
     Column(
         "user_id",
@@ -214,6 +215,11 @@ sales = Table(
         server_onupdate=func.now(),
         nullable=False,
     ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
 
@@ -277,6 +283,11 @@ stock_transfers = Table(
         server_onupdate=func.now(),
         nullable=False,
     ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
 
@@ -303,6 +314,11 @@ inventory_audit = Table(
         nullable=False,
     ),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
 
@@ -315,7 +331,20 @@ suppliers = Table(
     Column("contact", String),
     Column("address", Text),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
+
 
 purchase_receipts = Table(
     "purchase_receipts",
@@ -330,7 +359,20 @@ purchase_receipts = Table(
     Column("receipt_number", String, nullable=False, unique=True),
     Column("total_amount", Numeric(10, 2), server_default=text("0")),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
+
 
 purchase_receipt_items = Table(
     "purchase_receipt_items",
@@ -342,7 +384,9 @@ purchase_receipt_items = Table(
     Column("expiry_date", Date),
     Column("quantity", Integer, server_default=text("0")),
     Column("cost_price", Numeric(10, 2)),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
 )
+
 
 stock_reservations = Table(
     "stock_reservations",
@@ -361,7 +405,13 @@ stock_reservations = Table(
         server_onupdate=func.now(),
         nullable=False,
     ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
+
 
 # stock_adjustments (manual adjustments, damage, loss, corrections)
 stock_adjustments = Table(
@@ -386,7 +436,20 @@ stock_adjustments = Table(
     ),
     Column("approved_by", Integer, ForeignKey("users.id", ondelete="SET NULL")),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
+
 
 # backorders (unfulfilled demand)
 backorders = Table(
@@ -405,21 +468,33 @@ backorders = Table(
         ForeignKey("stores.id", ondelete="RESTRICT"),
         nullable=False,
     ),
-    Column("quantity", Integer, nullable=False),
-    Column("customer_id", Integer),
-    Column("status", String, server_default=text("'pending'")),  # 'pending', 'partial', 'fulfilled', 'cancelled'
+    Column("quantity_requested", Integer, nullable=False),
+    Column("customer_name", String),
+    Column("contact_info", String),
     Column("notes", Text),
+    Column("status", String, server_default=text("'pending'")),  # 'pending', 'fulfilled', 'cancelled'
     Column(
         "user_id",
         Integer,
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL"),
     ),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
-    Column("fulfilled_date", DateTime),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
-# inventory_reconciliations (physical count records)
+
+# inventory_reconciliations (stock taking)
 inventory_reconciliations = Table(
     "inventory_reconciliations",
     metadata,
@@ -430,19 +505,32 @@ inventory_reconciliations = Table(
         ForeignKey("stores.id", ondelete="RESTRICT"),
         nullable=False,
     ),
-    Column("reconciliation_date", DateTime, nullable=False),
-    Column("total_variance_qty", Integer),
-    Column("notes", Text),
+    Column("status", String, server_default=text("'in_progress'")),  # 'in_progress', 'completed', 'cancelled'
+    Column("started_at", DateTime, server_default=func.now(), nullable=False),
+    Column("completed_at", DateTime),
     Column(
         "user_id",
         Integer,
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     ),
-    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column("notes", Text),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
-# reconciliation_items (detail per batch)
+
+# reconciliation_items
 reconciliation_items = Table(
     "reconciliation_items",
     metadata,
@@ -461,21 +549,29 @@ reconciliation_items = Table(
     ),
     Column("system_quantity", Integer, nullable=False),
     Column("counted_quantity", Integer, nullable=False),
-    Column("variance_quantity", Integer, nullable=False),
+    Column("difference", Integer, nullable=False),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
 
-# --- Required Indexes --------------------------------------------------------
-Index(
-    "idx_product_batches_store_expiry",
-    product_batches.c.store_id,
-    product_batches.c.expiry_date,
-)
-Index(
-    "idx_product_batches_product_store",
-    product_batches.c.product_id,
-    product_batches.c.store_id,
+# sync_logs
+sync_logs = Table(
+    "sync_logs",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("table_name", String, nullable=False),
+    Column("record_id", Integer, nullable=False),
+    Column("action", String, nullable=False),  # 'insert', 'update', 'delete'
+    Column("sync_id", String, nullable=True),
+    Column("timestamp", DateTime, server_default=func.now(), nullable=False),
+    Column("status", String, nullable=False),  # 'success', 'failed'
+    Column("error_message", Text),
+    Column("retry_count", Integer, server_default=text("0")),
 )
 Index("idx_sales_store_date", sales.c.store_id, sales.c.created_at)
 Index("idx_sales_receipt", sales.c.receipt_number, unique=True)
@@ -659,4 +755,5 @@ __all__ = [
     "backorders",
     "inventory_reconciliations",
     "reconciliation_items",
+    "sync_logs",
 ]

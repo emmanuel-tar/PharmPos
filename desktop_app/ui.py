@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QFrame,
     QCheckBox,
+    QShortcut,
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QFont
@@ -1112,7 +1113,7 @@ class MainWindow(QMainWindow):
             ["Item #", "Product", "Price (₦)", "Qty", "Disc (%)", "Total (₦)"]
         )
         self.sales_cart_table.setColumnWidth(0, 50)
-        self.sales_cart_table.setColumnWidth(1, 160)
+        self.sales_cart_table.setColumnWidth(1, 280)  # Product Name - wider for long names
         self.sales_cart_table.setColumnWidth(2, 80)
         self.sales_cart_table.setColumnWidth(3, 50)
         self.sales_cart_table.setColumnWidth(4, 70)
@@ -1429,8 +1430,8 @@ class MainWindow(QMainWindow):
             ["ID", "Name", "SKU", "Cost Price", "Retail Price", "Bulk Price", "Bulk Qty", 
              "Wholesale Price", "Wholesale Qty", "Min Stock", "Max Stock", "Reorder Level", "Status"]
         )
-        self.products_table.setColumnWidth(1, 120)
-        self.products_table.setColumnWidth(2, 80)
+        self.products_table.setColumnWidth(1, 250)  # Product Name - wider for long names
+        self.products_table.setColumnWidth(2, 120)  # SKU - wider
         layout.addWidget(self.products_table)
 
         # Load products on startup

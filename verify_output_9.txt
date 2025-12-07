@@ -1,0 +1,63 @@
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_sync_id.py", line 86, in verify_sync_id
+    backorder = inventory_service.create_backorder(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\models.py", line 812, in create_backorder
+    result = self.session.execute(stmt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\orm\session.py", line 2258, in _execute_internal
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1633, in _execute_clauseelement
+    compiled_sql, extracted_params, cache_hit = elem._compile_w_cache(
+                                                ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 715, in _compile_w_cache
+    compiled_sql = self._compiler(
+                   ^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 323, in _compiler
+    return dialect.statement_compiler(dialect, self, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 1446, in __init__
+    Compiled.__init__(self, dialect, statement, **kwargs)
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 886, in __init__
+    self.string = self.process(self.statement, **compile_kwargs)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 932, in process
+    return obj._compiler_dispatch(self, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\visitors.py", line 138, in _compiler_dispatch
+    return meth(self, **kw)  # type: ignore  # noqa: E501
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 5896, in visit_insert
+    crud_params_struct = crud._get_crud_params(
+                         ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\crud.py", line 381, in _get_crud_params
+    raise exc.CompileError(
+sqlalchemy.exc.CompileError: Unconsumed column names: customer_id, quantity, notes
+Initializing DB...
+Database initialized at: sqlite:///test_sync.db
+Testing Store Creation...
+Store Sync ID: 60f9f30b-5bb9-4f14-9a21-c1c24c8cdace
+Testing User Creation...
+User Sync ID: 844bcfef-57d8-4ffe-aef0-9847165eb636
+Testing Product Creation...
+Product Sync ID: 5690ecbf-cee1-4ea5-a0a5-cb9f7d3558ab
+Testing Stock Receipt (Batch)...
+Batch Sync ID: 725e9211-0cfb-4eae-abef-eb30fd295171
+Testing Sale Creation...
+Sale Sync ID: fa383729-85df-4ca5-9ec2-a54954327838
+Testing Stock Transfer...
+Transfer Sync ID: 2d5d553d-e1c2-493d-9e4d-b28353d22ecc
+Testing Reservation...
+Reservation Sync ID: 1d23ff2b-52f1-44fe-8b63-3c50afd8c80b
+Testing Backorder...
+TEST FAILED: Unconsumed column names: customer_id, quantity, notes

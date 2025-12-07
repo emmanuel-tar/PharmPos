@@ -1,0 +1,46 @@
+Traceback (most recent call last):
+Setting up test data...
+Database initialized at: sqlite:///test_payment.db
+
+[ERROR] Verification failed: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+[SQL: INSERT OR IGNORE INTO product_batches (id, product_id, store_id, batch_number, expiry_date, quantity, cost_price) VALUES (1, 1, 1, 'BATCH001', '2025-12-31', 100, 100)]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+Original error: FOREIGN KEY constraint failed
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_payment.py", line 112, in <module>
+    verify_online_payment()
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_payment.py", line 48, in verify_online_payment
+    setup_test_data()
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_payment.py", line 41, in setup_test_data
+    conn.execute(text("INSERT OR IGNORE INTO product_batches (id, product_id, store_id, batch_number, expiry_date, quantity, cost_price) VALUES (1, 1, 1, 'BATCH001', '2025-12-31', 100, 100)"))
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+[SQL: INSERT OR IGNORE INTO product_batches (id, product_id, store_id, batch_number, expiry_date, quantity, cost_price) VALUES (1, 1, 1, 'BATCH001', '2025-12-31', 100, 100)]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)

@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_sync_id.py", line 10, in <module>
+    from desktop_app.database import init_db, get_engine, stores, users, products, product_batches, sales, stock_transfers, stock_reservations, backorders, inventory_reconciliations
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\__init__.py", line 11, in <module>
+    from desktop_app.database import init_db, get_engine, metadata
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\database.py", line 27, in <module>
+    from desktop_app.config import DB_PATH
+ImportError: cannot import name 'DB_PATH' from 'desktop_app.config' (C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\config.py)

@@ -1,0 +1,65 @@
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\verify_sync_id.py", line 94, in verify_sync_id
+    recon = inventory_service.reconcile_inventory(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\models.py", line 613, in reconcile_inventory
+    recon_result = self.session.execute(recon_stmt)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\orm\session.py", line 2258, in _execute_internal
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\engine\base.py", line 1633, in _execute_clauseelement
+    compiled_sql, extracted_params, cache_hit = elem._compile_w_cache(
+                                                ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 715, in _compile_w_cache
+    compiled_sql = self._compiler(
+                   ^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\elements.py", line 323, in _compiler
+    return dialect.statement_compiler(dialect, self, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 1446, in __init__
+    Compiled.__init__(self, dialect, statement, **kwargs)
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 886, in __init__
+    self.string = self.process(self.statement, **compile_kwargs)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 932, in process
+    return obj._compiler_dispatch(self, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\visitors.py", line 138, in _compiler_dispatch
+    return meth(self, **kw)  # type: ignore  # noqa: E501
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\compiler.py", line 5896, in visit_insert
+    crud_params_struct = crud._get_crud_params(
+                         ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tar Emmanuel\AppData\Local\Programs\Python\Python311\Lib\site-packages\sqlalchemy\sql\crud.py", line 381, in _get_crud_params
+    raise exc.CompileError(
+sqlalchemy.exc.CompileError: Unconsumed column names: reconciliation_date
+Initializing DB...
+Database initialized at: sqlite:///test_sync.db
+Testing Store Creation...
+Store Sync ID: 5b7515c5-3c61-4416-af33-f4152cd45ed2
+Testing User Creation...
+User Sync ID: c0eeb9e7-1942-4cf1-8423-9fc99188e409
+Testing Product Creation...
+Product Sync ID: 1360ea5d-2524-4ed0-a755-fb71771b2b1b
+Testing Stock Receipt (Batch)...
+Batch Sync ID: 8c92dae3-5d7b-4532-936d-d6c22cd8c666
+Testing Sale Creation...
+Sale Sync ID: beb8cd48-539a-4640-9dc9-e8cd71c64419
+Testing Stock Transfer...
+Transfer Sync ID: c0ed5ea4-e968-4213-b967-3a556e3a4254
+Testing Reservation...
+Reservation Sync ID: a0f4b49e-f2c7-4efe-985a-cfcafba6395f
+Testing Backorder...
+Backorder Sync ID: 7dbf31a2-1737-403a-91a5-64328af696ea
+Testing Reconciliation...
+TEST FAILED: Unconsumed column names: reconciliation_date

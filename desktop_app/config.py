@@ -13,6 +13,7 @@ from typing import Final, Optional, Dict, Any
 # --- File Paths ---
 PROJECT_ROOT: Final[Path] = Path(__file__).parent.parent
 DATABASE_PATH: Final[Path] = PROJECT_ROOT / "pharmapos.db"
+DB_PATH = DATABASE_PATH
 LOGS_DIR: Final[Path] = PROJECT_ROOT / "logs"
 
 # --- Database ---
@@ -41,11 +42,16 @@ ROLE_HIERARCHY: Final[dict[str, int]] = {
 PAYMENT_CASH: Final[str] = "cash"
 PAYMENT_CARD: Final[str] = "card"
 PAYMENT_TRANSFER: Final[str] = "transfer"
+PAYMENT_PAYSTACK: Final[str] = "paystack"
+PAYMENT_FLUTTERWAVE: Final[str] = "flutterwave"
 
 VALID_PAYMENT_METHODS: Final[list[str]] = [
     PAYMENT_CASH,
     PAYMENT_CARD,
+    PAYMENT_CARD,
     PAYMENT_TRANSFER,
+    PAYMENT_PAYSTACK,
+    PAYMENT_FLUTTERWAVE,
 ]
 
 # --- Stock Transfer Status ---
@@ -129,6 +135,22 @@ def get_config() -> dict:
             "font_size_normal": FONT_SIZE_NORMAL,
             "font_size_title": FONT_SIZE_TITLE,
         },
+        "ui": {
+            "window_width": WINDOW_WIDTH,
+            "window_height": WINDOW_HEIGHT,
+            "font_size_normal": FONT_SIZE_NORMAL,
+            "font_size_title": FONT_SIZE_TITLE,
+        },
+        "payment_gateways": {
+            "paystack": {
+                "public_key": os.environ.get("PAYSTACK_PUBLIC_KEY", "pk_test_..."),
+                "secret_key": os.environ.get("PAYSTACK_SECRET_KEY", "sk_test_..."),
+            },
+            "flutterwave": {
+                "public_key": os.environ.get("FLW_PUBLIC_KEY", "FLWPUBK_TEST-..."),
+                "secret_key": os.environ.get("FLW_SECRET_KEY", "FLWSECK_TEST-..."),
+            }
+        }
     }
 
 
@@ -229,6 +251,7 @@ def get_printer_device_info(printer_type: Optional[str] = None, config: Optional
 __all__ = [
     "PROJECT_ROOT",
     "DATABASE_PATH",
+    "DB_PATH",
     "SESSION_TIMEOUT_MINUTES",
     "PASSWORD_MIN_LENGTH",
     "VALID_ROLES",
