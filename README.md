@@ -1,316 +1,302 @@
-# PharmaPOS NG - Pharmacy Management System
+# PharmaPOS NG - Professional Pharmacy Management System
 
-A complete pharmacy billing and inventory management system built with Python, SQLAlchemy, and PyQt5.
+**Version 2.0.0** | **Market-Ready Release**
 
-## Features
+A complete, production-ready pharmacy billing and inventory management system built with Python, SQLAlchemy, and PyQt5. Designed specifically for Nigerian pharmacies with NAFDAC compliance, FEFO inventory management, and comprehensive reporting.
 
-### 1. **Authentication & User Management**
-- User registration and login with password hashing (PBKDF2)
-- Role-based access control (Admin, Manager, Cashier)
-- Session management with automatic timeout
-- Password change functionality
+---
 
-### 2. **Point of Sale (POS)**
-- Fast and intuitive sales interface
-- Shopping cart system
-- Multiple payment methods (Cash, Card, Transfer)
-- Automatic receipt generation
-- Change calculation
+## 🌟 Key Features
 
-### 3. **Inventory Management**
-- Product catalog with SKU and barcode support
-- Batch-based inventory tracking
-- **FEFO (First Expiry, First Out)** principle
-- Stock level monitoring
-- Batch expiry tracking
-- Automatic audit trail for all stock movements
+### 💼 Business Management
 
-### 4. **Multi-Store Operations**
-- Support for multiple pharmacy locations
-- Per-store user assignments
-- Inter-store stock transfers
-- Centralized reporting
+- **Point of Sale (POS)** - Fast, intuitive sales interface with multiple payment methods
+- **Customer Management** - Track customer purchases and loyalty points
+- **Inventory Control** - Batch-based tracking with FEFO (First Expiry, First Out)
+- **Multi-Store Support** - Manage multiple pharmacy locations
+- **Comprehensive Reporting** - Sales, inventory, and compliance reports
 
-### 5. **Stock Management**
-- Stock receipt and recording
-- Real-time stock level updates
-- Stock transfers between stores
-- Batch write-offs and adjustments
-- Complete inventory audit trail
+### 🔒 Security & Compliance
 
-### 6. **Reporting & Analytics**
-- Daily sales reports
-- Top-selling products analysis
-- Inventory valuation reports
-- Batch aging analysis
-- Complete audit trails
-- Expiry alerts
-- Low stock alerts
+- **Role-Based Access** - Admin, Manager, and Cashier roles
+- **Audit Trail** - Complete logging of all transactions
+- **NAFDAC Compliance** - Track regulatory information
+- **Secure Authentication** - Password hashing with PBKDF2
+- **Automated Backups** - Daily backups with restore capability
 
-## Project Structure
+### 📊 Advanced Features
 
-```
-PharmPos/
-├── install.py                 # Dependency installer with DB initialization
-├── requirements.txt           # Python dependencies
-├── app.py                     # Main application entry point
-├── demo.py                    # Demo script to test functionality
-├── pharmapos.db              # SQLite database (created on first run)
-└── desktop_app/
-    ├── database.py           # Database schema and initialization
-    ├── models.py             # ORM models and business logic services
-    ├── auth.py               # Authentication and session management
-    ├── sales.py              # Sales transaction processing
-    ├── inventory.py          # Inventory management and batch tracking
-    ├── reports.py            # Reporting and analytics
-    └── ui.py                 # PyQt5 desktop application UI
-```
+- **FEFO Inventory** - Automatic expiry-based stock rotation
+- **Batch Tracking** - Complete traceability of all stock movements
+- **Expiry Alerts** - Notifications for expiring products
+- **Low Stock Alerts** - Automated reorder notifications
+- **Data Export** - Export to Excel, PDF, and CSV
+- **Loyalty Program** - Built-in customer rewards system
 
-## Installation
+### 🖨️ Hardware Integration
 
-### 1. Install Dependencies
+- **Thermal Printer Support** - POS receipt printers
+- **System Printer** - Standard Windows printers
+- **Barcode Ready** - Prepared for scanner integration
+
+---
+
+## 📋 System Requirements
+
+### Minimum
+
+- Windows 10 (64-bit)
+- Intel Core i3 or equivalent
+- 4 GB RAM
+- 500 MB free storage
+- 1280x720 display
+
+### Recommended
+
+- Windows 10/11 (64-bit)
+- Intel Core i5 or better
+- 8 GB RAM
+- 2 GB free storage
+- 1920x1080 display
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Python
+
+Download Python 3.11+ from [python.org](https://www.python.org/downloads/)
+
+**Important**: Check "Add Python to PATH" during installation
+
+### 2. Install PharmaPOS
 
 ```bash
-python install.py
-```
+# Extract PharmaPOS to your desired location
+cd C:\PharmaPOS
 
-Or manually:
-```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Initialize database
 python install.py --init-db
-```
 
-### 2. Initialize Database
-
-```bash
-python install.py --init-db
-```
-
-Or with custom database path:
-```bash
-python install.py --init-db --db ./data/pharmacy.db
-```
-
-## Usage
-
-### Run Demo Script
-
-Test all functionality without the GUI:
-```bash
-python demo.py
-```
-
-The demo will:
-- Create sample data (stores, users, products)
-- Demonstrate authentication
-- Process sample sales transactions
-- Show inventory management
-- Display alerts and reports
-
-### Run Desktop Application
-
-```bash
+# Launch application
 python app.py
 ```
 
-This opens the PyQt5 desktop application with:
-- Login screen
-- Dashboard with alerts
-- Sales processing interface
-- Inventory management
-- Product catalog
-- Reports and analytics
+### 3. First Login
 
-## Database Schema
+**Default Credentials:**
 
-### Core Tables
+- Admin: `admin` / `admin123`
+- Manager: `manager1` / `manager123`
+- Cashier: `cashier1` / `cashier123`
 
-| Table | Purpose |
-|-------|---------|
-| `stores` | Multiple pharmacy locations |
-| `users` | Staff accounts with roles |
-| `products` | Product master catalog |
-| `product_batches` | Inventory batches with expiry tracking |
-| `sales` | Completed transactions |
-| `sale_items` | Individual items in sales |
-| `stock_transfers` | Inter-store stock movements |
-| `inventory_audit` | Complete audit trail |
+⚠️ **Change these passwords immediately after first login!**
 
-### Key Features
+---
 
-- **Foreign Key Constraints**: Ensures data integrity
-- **FEFO Support**: Batches ordered by expiry date for automatic FEFO picking
-- **Audit Trail**: Every inventory change is logged with user, timestamp, and reason
-- **Indexes**: Performance optimization on frequently queried fields
-- **Partial Unique Index**: Ensures only one primary store
+## 📖 Documentation
 
-## API Examples
+- **[Installation Guide](INSTALL.md)** - Detailed setup instructions
+- **[Changelog](CHANGELOG.md)** - Version history and updates
+- **[User Manual](docs/)** - Complete user documentation
+- **[License](LICENSE.txt)** - Terms and conditions
 
-### Authentication
+---
 
-```python
-from desktop_app.auth import AuthenticationService
+## 💡 Core Capabilities
 
-auth = AuthenticationService()
+### Sales Management
 
-# Register user
-auth.register_user("cashier1", "password123", role="cashier")
-
-# Login
-session = auth.login("cashier1", "password123")
-if session:
-    print(f"Logged in as: {session.username}")
-```
-
-### Sales Processing
-
-```python
-from desktop_app.sales import SalesTransaction
-
-sales = SalesTransaction()
-
-# Add items to cart
-success, msg, cart = sales.add_item_to_cart([], batch_id=1, quantity=5)
-
-# Complete sale
-success, msg, sale = sales.finalize_sale(
-    user_id=1,
-    store_id=1,
-    cart=cart,
-    payment_method="cash",
-    amount_paid=Decimal("1000")
-)
-```
+- Shopping cart with real-time totals
+- Multiple payment methods (Cash, Card, Transfer, Paystack, Flutterwave)
+- Automatic receipt generation
+- Customer selection and loyalty points
+- Change calculation
+- Payment reference tracking
 
 ### Inventory Management
 
-```python
-from desktop_app.inventory import BatchManager, InventoryAlerts
+- Product catalog with SKU and barcode
+- Batch-based stock tracking
+- FEFO automatic allocation
+- Stock receiving with expiry dates
+- Inter-store transfers
+- Stock adjustments and write-offs
+- Inventory reconciliation
+- Comprehensive audit trail
 
-# Receive stock
-batch_manager = BatchManager()
-success, msg, batch = batch_manager.receive_batch(
-    product_id=1,
-    store_id=1,
-    batch_number="BATCH-001",
-    quantity=100,
-    expiry_date=date(2026, 12, 31),
-    cost_price=Decimal("50")
-)
+### Customer Management
 
-# Check alerts
-alerts = InventoryAlerts()
-report = alerts.generate_alerts(store_id=1)
-```
+- Customer database with contact info
+- Purchase history tracking
+- Loyalty points (1 point per ₦100)
+- Customer search and filtering
+- Total purchases tracking
 
-### Reporting
+### Reporting & Analytics
 
-```python
-from desktop_app.reports import SalesReporter, InventoryReporter
+- Daily sales reports
+- Top-selling products
+- Inventory valuation
+- Batch aging analysis
+- Expiry alerts
+- Low stock alerts
+- Cashier performance
+- Export to Excel/PDF/CSV
 
-# Sales report
-sales_reporter = SalesReporter()
-daily_sales = sales_reporter.get_daily_sales(store_id=1, report_date=date.today())
+### Multi-Store Operations
 
-# Inventory report
-inventory_reporter = InventoryReporter()
-valuation = inventory_reporter.get_stock_valuation(store_id=1)
-```
+- Multiple pharmacy locations
+- Per-store inventory
+- Stock transfers between stores
+- Centralized reporting
+- Store-specific user assignments
 
-## Configuration
+---
 
-### Password Security
+## 🔐 Security Features
 
-Passwords are hashed using PBKDF2 with:
-- Algorithm: SHA256
-- Iterations: 100,000
-- Salt: 16 random bytes
+- **Password Security**: PBKDF2 hashing with 100,000 iterations
+- **Session Management**: Automatic timeout after 60 minutes
+- **Audit Logging**: All critical operations logged
+- **Role-Based Access**: Granular permission control
+- **Data Backup**: Automated daily backups
+- **Data Encryption**: Infrastructure for sensitive data
 
-### Session Management
+---
 
-- Session timeout: 60 minutes (configurable)
-- Sessions stored in-memory during application runtime
-- Automatic cleanup of expired sessions
+## 📊 Data Management
 
-### Database
+### Automated Backups
 
-- Default database: `pharmapos.db` (SQLite)
-- Foreign keys enabled by default
-- Automatic timestamp management
+- Daily automatic backups
+- Manual backup on-demand
+- Backup verification
+- Easy restore process
+- Configurable retention (default: 10 backups)
 
-## Compliance
+### Data Export
 
-### Pharmaceutical Features
+- **Excel**: Professional formatted reports
+- **PDF**: Styled documents with tables
+- **CSV**: Universal data format
+- Automatic timestamp naming
 
-- **NAFDAC Number**: Tracks regulatory compliance for each product
-- **Batch Tracking**: Complete traceability of stock movements
-- **FEFO Principle**: Ensures oldest stock sells first
-- **Expiry Management**: Automatic alerts for expiring products
-- **Audit Trail**: Complete record of all inventory changes
+---
 
-## Advanced Features
+## 🛠️ Technical Stack
 
-### FEFO Implementation
+### Core Technologies
 
-The system automatically:
-1. Sorts batches by expiry date when picking
-2. Suggests the oldest batch for sale
-3. Prevents selling expired products
-4. Generates expiry alerts
+- **Python 3.8+** - Programming language
+- **SQLAlchemy 2.0** - Database ORM
+- **PyQt5** - Desktop UI framework
+- **SQLite** - Embedded database
 
-### Multi-User Workflow
+### Additional Libraries
 
-- Admin: Full system access, user management
-- Manager: Store-level reporting and approval
-- Cashier: Sales transactions and stock receiving
+- **openpyxl** - Excel generation
+- **reportlab** - PDF creation
+- **matplotlib** - Charts and graphs
+- **cryptography** - Data security
+- **Pillow** - Image processing
 
-### Reporting Flexibility
+---
 
-- Daily, weekly, monthly sales summaries
-- Top-selling products analysis
-- Inventory valuation by cost
-- Batch aging reports
-- Complete audit trails for compliance
+## 📞 Support
 
-## Troubleshooting
+### Getting Help
 
-### Database Issues
+- **Email**: support@pharmapos.ng
+- **Website**: www.pharmapos.ng
+- **Documentation**: See `docs/` folder
+- **Logs**: Check `logs/` folder for troubleshooting
 
-If database is corrupted:
-```bash
-rm pharmapos.db
-python install.py --init-db
-```
+### Common Issues
 
-### Import Errors
+See [INSTALL.md](INSTALL.md) for troubleshooting guide
 
-Ensure all dependencies are installed:
-```bash
-pip install -r requirements.txt
-```
+---
 
-### UI Issues
+## 🔄 Updates
 
-PyQt5 may require additional system libraries on Linux:
-```bash
-sudo apt-get install python3-pyqt5
-```
+### Checking for Updates
 
-## Future Enhancements
+1. Go to Help → Check for Updates
+2. Download latest version
+3. Backup your database
+4. Install new version
 
-- Cloud synchronization
-- Barcode scanning integration
-- Mobile app
-- Advanced reporting with charts
-- SMS alerts for low stock
-- Automated reordering
-- Integration with payment gateways
-- Multi-language support
+### Version History
 
-## Support
+See [CHANGELOG.md](CHANGELOG.md) for complete version history
 
-For issues or questions, refer to the demo script for usage examples.
+---
 
-## License
+## 📜 License
 
-PharmaPOS NG is provided as-is for pharmacy management operations.
+PharmaPOS NG is licensed software. See [LICENSE.txt](LICENSE.txt) for full terms and conditions.
+
+**Copyright © 2025 PharmaPOS NG. All rights reserved.**
+
+---
+
+## 🎯 Designed for Nigerian Pharmacies
+
+- NAFDAC number tracking
+- Nigerian Naira (₦) currency
+- Local compliance features
+- Multi-store management
+- FEFO inventory control
+- Comprehensive audit trails
+
+---
+
+## 🚦 Getting Started Checklist
+
+- [ ] Install Python 3.11+
+- [ ] Install PharmaPOS dependencies
+- [ ] Initialize database
+- [ ] Login and change default passwords
+- [ ] Configure store information
+- [ ] Add products to catalog
+- [ ] Receive opening inventory
+- [ ] Configure printer (optional)
+- [ ] Create user accounts
+- [ ] Test backup and restore
+- [ ] Start selling!
+
+---
+
+## 📈 What's New in Version 2.0
+
+### Major Enhancements
+
+✅ Customer management with loyalty points  
+✅ Automated backup and recovery system  
+✅ Data export (Excel, PDF, CSV)  
+✅ Centralized logging and error tracking  
+✅ Production-ready codebase  
+✅ Comprehensive documentation  
+✅ Enhanced security features
+
+See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+---
+
+## 🤝 Professional Support
+
+For enterprise deployments, custom features, or training:
+
+- **Email**: sales@pharmapos.ng
+- **Phone**: [Contact number]
+- **Website**: www.pharmapos.ng
+
+---
+
+**Built with ❤️ for Nigerian Pharmacies**
+
+_PharmaPOS NG - Simplifying Pharmacy Management_

@@ -1,2 +1,22 @@
+# Core Dependencies
 SQLAlchemy>=2.0.32,<2.1
 PyQt5>=5.15.0
+
+# Export & Reporting
+openpyxl>=3.1.0          # Excel export
+reportlab>=4.0.0         # PDF generation
+matplotlib>=3.8.0        # Charts and graphs
+pillow>=10.0.0          # Image processing
+
+# Security & Encryption
+cryptography>=41.0.0    # Data encryption
+
+# Configuration
+python-dotenv>=1.0.0    # Environment variables
+
+# Task Scheduling
+schedule>=1.2.0         # Automated tasks
+
+# Optional: Notifications (uncomment if needed)
+# twilio                # SMS notifications
+# sendgrid              # Email notifications

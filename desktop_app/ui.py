@@ -31,6 +31,7 @@ from PyQt5.QtWidgets import (
     QFrame,
     QCheckBox,
     QShortcut,
+    QStackedWidget,
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QFont
@@ -928,61 +929,895 @@ class MainWindow(QMainWindow):
         line.setStyleSheet("background-color: #cccccc;")
         return line
 
+    def create_sidebar(self) -> QWidget:
+        """Create the left sidebar navigation with expandable purchasing submenu."""
+        sidebar = QWidget()
+        sidebar.setFixedWidth(250)
+        sidebar.setStyleSheet("""
+            QWidget {
+                background-color: #2c3e50;
+                border-right: 2px solid #34495e;
+            }
+        """)
+
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(10, 20, 10, 20)
+        layout.setSpacing(5)
+
+        # Logo/Title
+        title = QLabel("PharmaPOS NG")
+        title.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 10px;
+                margin-bottom: 20px;
+            }
+        """)
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        # Navigation buttons
+        self.nav_buttons = []
+
+        # Main navigation items (excluding purchasing)
+        main_nav_items = [
+            ("🏠 Dashboard", 0),
+            ("💰 Sales", 1),
+            ("📦 Inventory", 2),
+            ("📋 Products", 3),
+            ("📊 Reports", 4),
+        ]
+
+        for text, index in main_nav_items:
+            btn = QPushButton(text)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #bdc3c7;
+                    border: none;
+                    text-align: left;
+                    padding: 12px 15px;
+                    font-size: 14px;
+                    border-radius: 5px;
+                    margin: 2px 0px;
+                }
+                QPushButton:hover {
+                    background-color: #34495e;
+                    color: white;
+                }
+                QPushButton:checked {
+                    background-color: #3498db;
+                    color: white;
+                    font-weight: bold;
+                }
+            """)
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked, idx=index: self.set_active_page(idx))
+            layout.addWidget(btn)
+            self.nav_buttons.append(btn)
+
+        # ===== PURCHASING SECTION WITH SUBMENU =====
+        purchasing_frame = QFrame()
+        purchasing_frame.setStyleSheet("""
+            QFrame {
+                background-color: #34495e;
+                border-radius: 8px;
+                margin: 5px 0px;
+            }
+        """)
+        purchasing_layout = QVBoxLayout(purchasing_frame)
+        purchasing_layout.setContentsMargins(5, 5, 5, 5)
+        purchasing_layout.setSpacing(2)
+
+        # Purchasing main button (toggle submenu)
+        self.purchasing_main_btn = QPushButton("🛒 Purchasing ▼")
+        self.purchasing_main_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                text-align: left;
+                padding: 12px 15px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 5px;
+                margin: 0px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        self.purchasing_main_btn.clicked.connect(self.toggle_purchasing_submenu)
+        purchasing_layout.addWidget(self.purchasing_main_btn)
+
+        # Submenu container (initially hidden)
+        self.purchasing_submenu = QWidget()
+        self.purchasing_submenu.setVisible(False)
+        submenu_layout = QVBoxLayout(self.purchasing_submenu)
+        submenu_layout.setContentsMargins(15, 5, 5, 5)
+        submenu_layout.setSpacing(1)
+
+        # Purchasing sub-menu items
+        purchasing_sub_items = [
+            ("📝 Purchase Order", 5),
+            ("📄 Purchase Invoice", 6),
+            ("🏢 Suppliers", 7),
+            ("🏭 Warehouse", 8),
+        ]
+
+        self.purchasing_sub_buttons = []
+        for text, index in purchasing_sub_items:
+            btn = QPushButton(text)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #bdc3c7;
+                    border: none;
+                    text-align: left;
+                    padding: 8px 10px;
+                    font-size: 12px;
+                    border-radius: 3px;
+                    margin: 1px 0px;
+                }
+                QPushButton:hover {
+                    background-color: #2c3e50;
+                    color: white;
+                }
+                QPushButton:checked {
+                    background-color: #e74c3c;
+                    color: white;
+                    font-weight: bold;
+                }
+            """)
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked, idx=index: self.set_active_page(idx))
+            submenu_layout.addWidget(btn)
+            self.purchasing_sub_buttons.append(btn)
+            self.nav_buttons.append(btn)  # Add to main nav buttons list
+
+        purchasing_layout.addWidget(self.purchasing_submenu)
+        layout.addWidget(purchasing_frame)
+
+        # Add admin panel for admin users
+        if self.user_session.role.lower() == "admin":
+            admin_btn = QPushButton("👑 Admin")
+            admin_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #bdc3c7;
+                    border: none;
+                    text-align: left;
+                    padding: 12px 15px;
+                    font-size: 14px;
+                    border-radius: 5px;
+                    margin: 2px 0px;
+                }
+                QPushButton:hover {
+                    background-color: #34495e;
+                    color: white;
+                }
+                QPushButton:checked {
+                    background-color: #3498db;
+                    color: white;
+                    font-weight: bold;
+                }
+            """)
+            admin_btn.setCheckable(True)
+            admin_btn.clicked.connect(lambda checked, idx=9: self.set_active_page(idx))
+            layout.addWidget(admin_btn)
+            self.nav_buttons.append(admin_btn)
+
+        # Spacer
+        layout.addStretch()
+
+        # User info at bottom
+        user_frame = QFrame()
+        user_frame.setStyleSheet("""
+            QFrame {
+                background-color: #34495e;
+                border-radius: 8px;
+                padding: 10px;
+                margin-top: 20px;
+            }
+        """)
+        user_layout = QVBoxLayout(user_frame)
+
+        user_name = QLabel(f"👤 {self.user_session.username}")
+        user_name.setStyleSheet("color: white; font-weight: bold; font-size: 12px;")
+        user_layout.addWidget(user_name)
+
+        user_role = QLabel(f"Role: {self.user_session.role}")
+        user_role.setStyleSheet("color: #bdc3c7; font-size: 10px;")
+        user_layout.addWidget(user_role)
+
+        logout_btn = QPushButton("🚪 Logout")
+        logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                margin-top: 5px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        logout_btn.clicked.connect(self.logout)
+        user_layout.addWidget(logout_btn)
+
+        layout.addWidget(user_frame)
+
+        return sidebar
+
+    def create_header_bar(self) -> QWidget:
+        """Create the top header bar."""
+        header = QWidget()
+        header.setFixedHeight(60)
+        header.setStyleSheet("""
+            QWidget {
+                background-color: #ecf0f1;
+                border-bottom: 1px solid #bdc3c7;
+            }
+        """)
+
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(20, 10, 20, 10)
+
+        # Current page title
+        self.page_title = QLabel("Dashboard")
+        self.page_title.setStyleSheet("""
+            QLabel {
+                font-size: 20px;
+                font-weight: bold;
+                color: #2c3e50;
+            }
+        """)
+        layout.addWidget(self.page_title)
+
+        layout.addStretch()
+
+        # Quick actions
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(10)
+
+        # Printer settings
+        printer_btn = QPushButton("🖨 Printer")
+        printer_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        printer_btn.clicked.connect(self.open_printer_settings)
+        actions_layout.addWidget(printer_btn)
+
+        # Settings
+        settings_btn = QPushButton("⚙ Settings")
+        settings_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+        """)
+        actions_layout.addWidget(settings_btn)
+
+        layout.addLayout(actions_layout)
+
+        return header
+
+    def toggle_purchasing_submenu(self) -> None:
+        """Toggle the visibility of the purchasing submenu."""
+        is_visible = self.purchasing_submenu.isVisible()
+        self.purchasing_submenu.setVisible(not is_visible)
+
+        # Update the main button text
+        if not is_visible:
+            self.purchasing_main_btn.setText("🛒 Purchasing ▲")
+        else:
+            self.purchasing_main_btn.setText("🛒 Purchasing ▼")
+
+    def set_active_page(self, index: int) -> None:
+        """Set the active page in the content stack."""
+        self.content_stack.setCurrentIndex(index)
+
+        # Update navigation button states
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setChecked(i == index)
+
+        # Update page title
+        page_titles = [
+            "Dashboard",
+            "Sales",
+            "Inventory",
+            "Products",
+            "Reports",
+            "Purchase Order",
+            "Purchase Invoice",
+            "Suppliers",
+            "Warehouse",
+            "Admin Panel"
+        ]
+
+        if index < len(page_titles):
+            self.page_title.setText(page_titles[index])
+
+    def create_purchasing_tab(self) -> QWidget:
+        """Create purchasing management tab."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("PURCHASING MANAGEMENT")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #2c3e50;")
+        layout.addWidget(title)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        create_po_btn = QPushButton("📝 Create Purchase Order")
+        create_po_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+        """)
+        button_layout.addWidget(create_po_btn)
+
+        receive_goods_btn = QPushButton("📦 Receive Goods")
+        receive_goods_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        receive_goods_btn.clicked.connect(self.receive_stock)
+        button_layout.addWidget(receive_goods_btn)
+
+        view_suppliers_btn = QPushButton("🏢 Suppliers")
+        view_suppliers_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+        """)
+        button_layout.addWidget(view_suppliers_btn)
+
+        layout.addLayout(button_layout)
+
+        # Purchase Orders table
+        po_title = QLabel("Recent Purchase Orders")
+        po_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px 0px; color: #34495e;")
+        layout.addWidget(po_title)
+
+        self.purchase_orders_table = QTableWidget()
+        self.purchase_orders_table.setColumnCount(6)
+        self.purchase_orders_table.setHorizontalHeaderLabels(
+            ["PO #", "Supplier", "Date", "Status", "Total", "Actions"]
+        )
+        self.purchase_orders_table.setColumnWidth(1, 200)
+        self.purchase_orders_table.setColumnWidth(5, 150)
+
+        # Sample data
+        sample_pos = [
+            ["PO-2024-001", "MediPharm Ltd", "2024-01-15", "Pending", "₦125,000", "View"],
+            ["PO-2024-002", "HealthCorp", "2024-01-20", "Approved", "₦89,500", "View"],
+            ["PO-2024-003", "PharmaPlus", "2024-01-25", "Delivered", "₦156,200", "View"],
+        ]
+
+        self.purchase_orders_table.setRowCount(len(sample_pos))
+        for i, po in enumerate(sample_pos):
+            for j, value in enumerate(po):
+                self.purchase_orders_table.setItem(i, j, QTableWidgetItem(value))
+
+            # Add action button
+            action_btn = QPushButton("👁 View")
+            action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f39c12;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #e67e22;
+                }
+            """)
+            self.purchase_orders_table.setCellWidget(i, 5, action_btn)
+
+        layout.addWidget(self.purchase_orders_table)
+
+        # Low stock alerts section
+        alerts_title = QLabel("Items Needing Replenishment")
+        alerts_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 20px 0px 10px 0px; color: #34495e;")
+        layout.addWidget(alerts_title)
+
+        self.low_stock_table = QTableWidget()
+        self.low_stock_table.setColumnCount(4)
+        self.low_stock_table.setHorizontalHeaderLabels(
+            ["Product", "Current Stock", "Min Required", "Suggested Order"]
+        )
+        self.low_stock_table.setColumnWidth(0, 250)
+
+        # Sample low stock data
+        low_stock_items = [
+            ["Paracetamol 500mg", "15", "50", "100"],
+            ["Amoxicillin 250mg", "8", "25", "50"],
+            ["Ibuprofen 200mg", "12", "30", "75"],
+        ]
+
+        self.low_stock_table.setRowCount(len(low_stock_items))
+        for i, item in enumerate(low_stock_items):
+            for j, value in enumerate(item):
+                table_item = QTableWidgetItem(value)
+                if j == 1 and int(value) < 20:  # Low stock highlighting
+                    table_item.setBackground(Qt.red)
+                    table_item.setForeground(Qt.white)
+                self.low_stock_table.setItem(i, j, table_item)
+
+        layout.addWidget(self.low_stock_table)
+
+        return widget
+
+    def create_purchase_order_tab(self) -> QWidget:
+        """Create purchase order management tab."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("PURCHASE ORDER MANAGEMENT")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #2c3e50;")
+        layout.addWidget(title)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        create_po_btn = QPushButton("📝 Create Purchase Order")
+        create_po_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+        """)
+        button_layout.addWidget(create_po_btn)
+
+        view_po_btn = QPushButton("👁 View Purchase Orders")
+        view_po_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        button_layout.addWidget(view_po_btn)
+
+        layout.addLayout(button_layout)
+
+        # Purchase Orders table
+        po_title = QLabel("Recent Purchase Orders")
+        po_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px 0px; color: #34495e;")
+        layout.addWidget(po_title)
+
+        self.purchase_orders_table = QTableWidget()
+        self.purchase_orders_table.setColumnCount(6)
+        self.purchase_orders_table.setHorizontalHeaderLabels(
+            ["PO #", "Supplier", "Date", "Status", "Total", "Actions"]
+        )
+        self.purchase_orders_table.setColumnWidth(1, 200)
+        self.purchase_orders_table.setColumnWidth(5, 150)
+
+        # Sample data
+        sample_pos = [
+            ["PO-2024-001", "MediPharm Ltd", "2024-01-15", "Pending", "₦125,000", "View"],
+            ["PO-2024-002", "HealthCorp", "2024-01-20", "Approved", "₦89,500", "View"],
+            ["PO-2024-003", "PharmaPlus", "2024-01-25", "Delivered", "₦156,200", "View"],
+        ]
+
+        self.purchase_orders_table.setRowCount(len(sample_pos))
+        for i, po in enumerate(sample_pos):
+            for j, value in enumerate(po):
+                self.purchase_orders_table.setItem(i, j, QTableWidgetItem(value))
+
+            # Add action button
+            action_btn = QPushButton("👁 View")
+            action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f39c12;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #e67e22;
+                }
+            """)
+            self.purchase_orders_table.setCellWidget(i, 5, action_btn)
+
+        layout.addWidget(self.purchase_orders_table)
+
+        return widget
+
+    def create_purchase_invoice_tab(self) -> QWidget:
+        """Create purchase invoice management tab."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("PURCHASE INVOICE MANAGEMENT")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #2c3e50;")
+        layout.addWidget(title)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        create_invoice_btn = QPushButton("📄 Create Purchase Invoice")
+        create_invoice_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        button_layout.addWidget(create_invoice_btn)
+
+        view_invoices_btn = QPushButton("📋 View Invoices")
+        view_invoices_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+        """)
+        button_layout.addWidget(view_invoices_btn)
+
+        layout.addLayout(button_layout)
+
+        # Purchase Invoices table
+        invoices_title = QLabel("Recent Purchase Invoices")
+        invoices_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px 0px; color: #34495e;")
+        layout.addWidget(invoices_title)
+
+        self.purchase_invoices_table = QTableWidget()
+        self.purchase_invoices_table.setColumnCount(7)
+        self.purchase_invoices_table.setHorizontalHeaderLabels(
+            ["Invoice #", "Supplier", "PO #", "Date", "Status", "Total", "Actions"]
+        )
+        self.purchase_invoices_table.setColumnWidth(1, 150)
+        self.purchase_invoices_table.setColumnWidth(6, 150)
+
+        # Sample data
+        sample_invoices = [
+            ["INV-2024-001", "MediPharm Ltd", "PO-2024-001", "2024-01-16", "Paid", "₦125,000", "View"],
+            ["INV-2024-002", "HealthCorp", "PO-2024-002", "2024-01-21", "Pending", "₦89,500", "View"],
+            ["INV-2024-003", "PharmaPlus", "PO-2024-003", "2024-01-26", "Paid", "₦156,200", "View"],
+        ]
+
+        self.purchase_invoices_table.setRowCount(len(sample_invoices))
+        for i, invoice in enumerate(sample_invoices):
+            for j, value in enumerate(invoice):
+                self.purchase_invoices_table.setItem(i, j, QTableWidgetItem(value))
+
+            # Add action button
+            action_btn = QPushButton("👁 View")
+            action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f39c12;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #e67e22;
+                }
+            """)
+            self.purchase_invoices_table.setCellWidget(i, 6, action_btn)
+
+        layout.addWidget(self.purchase_invoices_table)
+
+        return widget
+
+    def create_suppliers_tab(self) -> QWidget:
+        """Create suppliers management tab."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("SUPPLIERS MANAGEMENT")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #2c3e50;")
+        layout.addWidget(title)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        add_supplier_btn = QPushButton("🏢 Add Supplier")
+        add_supplier_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+        """)
+        button_layout.addWidget(add_supplier_btn)
+
+        manage_suppliers_btn = QPushButton("📋 Manage Suppliers")
+        manage_suppliers_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        button_layout.addWidget(manage_suppliers_btn)
+
+        layout.addLayout(button_layout)
+
+        # Suppliers table
+        suppliers_title = QLabel("Supplier Directory")
+        suppliers_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px 0px; color: #34495e;")
+        layout.addWidget(suppliers_title)
+
+        self.suppliers_table = QTableWidget()
+        self.suppliers_table.setColumnCount(7)
+        self.suppliers_table.setHorizontalHeaderLabels(
+            ["ID", "Name", "Contact Person", "Phone", "Email", "Status", "Actions"]
+        )
+        self.suppliers_table.setColumnWidth(1, 200)
+        self.suppliers_table.setColumnWidth(2, 150)
+        self.suppliers_table.setColumnWidth(6, 150)
+
+        # Sample data
+        sample_suppliers = [
+            ["1", "MediPharm Ltd", "John Smith", "+234-123-4567", "john@medipharm.com", "Active", "Edit"],
+            ["2", "HealthCorp", "Sarah Johnson", "+234-234-5678", "sarah@healthcorp.com", "Active", "Edit"],
+            ["3", "PharmaPlus", "Mike Davis", "+234-345-6789", "mike@pharmaplus.com", "Active", "Edit"],
+        ]
+
+        self.suppliers_table.setRowCount(len(sample_suppliers))
+        for i, supplier in enumerate(sample_suppliers):
+            for j, value in enumerate(supplier):
+                self.suppliers_table.setItem(i, j, QTableWidgetItem(value))
+
+            # Add action button
+            action_btn = QPushButton("✏ Edit")
+            action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f39c12;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #e67e22;
+                }
+            """)
+            self.suppliers_table.setCellWidget(i, 6, action_btn)
+
+        layout.addWidget(self.suppliers_table)
+
+        return widget
+
+    def create_warehouse_tab(self) -> QWidget:
+        """Create warehouse management tab."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("WAREHOUSE MANAGEMENT")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #2c3e50;")
+        layout.addWidget(title)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        add_location_btn = QPushButton("🏭 Add Warehouse Location")
+        add_location_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+        """)
+        button_layout.addWidget(add_location_btn)
+
+        manage_stock_btn = QPushButton("📦 Manage Stock Locations")
+        manage_stock_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        button_layout.addWidget(manage_stock_btn)
+
+        layout.addLayout(button_layout)
+
+        # Warehouse locations table
+        warehouse_title = QLabel("Warehouse Locations & Stock Distribution")
+        warehouse_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px 0px; color: #34495e;")
+        layout.addWidget(warehouse_title)
+
+        self.warehouse_table = QTableWidget()
+        self.warehouse_table.setColumnCount(6)
+        self.warehouse_table.setHorizontalHeaderLabels(
+            ["Location", "Product", "Batch", "Quantity", "Expiry Date", "Status"]
+        )
+        self.warehouse_table.setColumnWidth(0, 150)
+        self.warehouse_table.setColumnWidth(1, 200)
+        self.warehouse_table.setColumnWidth(5, 100)
+
+        # Sample data
+        sample_warehouse = [
+            ["Main Warehouse", "Paracetamol 500mg", "BATCH-001", "500", "2025-12-31", "Good"],
+            ["Main Warehouse", "Amoxicillin 250mg", "BATCH-002", "300", "2025-10-15", "Good"],
+            ["Backup Storage", "Ibuprofen 200mg", "BATCH-003", "200", "2025-08-20", "Low"],
+        ]
+
+        self.warehouse_table.setRowCount(len(sample_warehouse))
+        for i, item in enumerate(sample_warehouse):
+            for j, value in enumerate(item):
+                table_item = QTableWidgetItem(value)
+                if j == 5 and value == "Low":  # Highlight low stock
+                    table_item.setBackground(Qt.yellow)
+                    table_item.setForeground(Qt.black)
+                self.warehouse_table.setItem(i, j, table_item)
+
+        layout.addWidget(self.warehouse_table)
+
+        return widget
+
     def setup_ui(self) -> None:
-        """Setup main UI."""
+        """Setup main UI with sidebar navigation."""
         self.setWindowTitle(f"PharmaPOS - {self.user_session.username} ({self.user_session.role})")
-        self.setGeometry(100, 100, 1200, 700)
+        self.setGeometry(100, 100, 1400, 800)
 
         # Central widget
         central = QWidget()
         self.setCentralWidget(central)
 
-        layout = QVBoxLayout()
+        main_layout = QHBoxLayout()
 
-        # Top bar with user info and logout
-        top_bar = QHBoxLayout()
-        user_label = QLabel(f"User: {self.user_session.username} | Role: {self.user_session.role}")
-        top_bar.addWidget(user_label)
-        top_bar.addStretch()
-        settings_btn = QPushButton("⚙ Printer Settings")
-        settings_btn.clicked.connect(self.open_printer_settings)
-        top_bar.addWidget(settings_btn)
-        
-        # Show admin tab only for admin users
-        if self.user_session.role.lower() == "admin":
-            admin_btn = QPushButton("👤 Admin Panel")
-            admin_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(5))
-            top_bar.addWidget(admin_btn)
-        
-        logout_btn = QPushButton("Logout")
-        logout_btn.clicked.connect(self.logout)
-        top_bar.addWidget(logout_btn)
-        layout.addLayout(top_bar)
+        # ===== LEFT SIDEBAR NAVIGATION =====
+        sidebar = self.create_sidebar()
+        main_layout.addWidget(sidebar, 0)  # Fixed width
 
-        # Tab widget
-        self.tabs = QTabWidget()
+        # ===== MAIN CONTENT AREA =====
+        content_area = QWidget()
+        content_layout = QVBoxLayout(content_area)
 
-        # Dashboard tab
-        self.tabs.addTab(self.create_dashboard_tab(), "Dashboard")
+        # Top header bar
+        header_bar = self.create_header_bar()
+        content_layout.addWidget(header_bar, 0)
 
-        # Sales tab
-        self.tabs.addTab(self.create_sales_tab(), "Sales")
+        # Main content stack
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(self.create_dashboard_tab())      # Index 0
+        self.content_stack.addWidget(self.create_sales_tab())          # Index 1
+        self.content_stack.addWidget(self.create_inventory_tab())      # Index 2
+        self.content_stack.addWidget(self.create_products_tab())       # Index 3
+        self.content_stack.addWidget(self.create_reports_tab())        # Index 4
+        self.content_stack.addWidget(self.create_purchase_order_tab()) # Index 5
+        self.content_stack.addWidget(self.create_purchase_invoice_tab()) # Index 6
+        self.content_stack.addWidget(self.create_suppliers_tab())      # Index 7
+        self.content_stack.addWidget(self.create_warehouse_tab())      # Index 8
 
-        # Inventory tab
-        self.tabs.addTab(self.create_inventory_tab(), "Inventory")
-
-        # Products tab
-        self.tabs.addTab(self.create_products_tab(), "Products")
-
-        # Reports tab
-        self.tabs.addTab(self.create_reports_tab(), "Reports")
-        
         # Admin tab (only for admin users)
         if self.user_session.role.lower() == "admin":
-            self.tabs.addTab(self.create_admin_tab(), "Admin")
+            self.content_stack.addWidget(self.create_admin_tab())      # Index 9
 
-        layout.addWidget(self.tabs)
-        central.setLayout(layout)
+        content_layout.addWidget(self.content_stack, 1)
+        main_layout.addWidget(content_area, 1)
+
+        central.setLayout(main_layout)
+
+        # Set initial active page
+        self.set_active_page(0)
 
     def create_dashboard_tab(self) -> QWidget:
         """Create dashboard tab."""
@@ -3019,66 +3854,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-    def print_thermal_receipt(
-        self,
-        receipt_number: str,
-        items: list,
-        subtotal: float,
-        tax: float,
-        total: float,
-        payment_method: str,
-        amount_paid: float,
-        change: float,
-    ) -> None:
-        """Print receipt to thermal printer (ESC/POS protocol)."""
-        try:
-            # Initialize thermal printer (FILE mode for testing/demo)
-            # Change PrinterType.FILE to:
-            #   PrinterType.USB for USB thermal printer (Epson TM series)
-            #   PrinterType.SERIAL for Serial thermal printer (COM port)
-            #   PrinterType.NETWORK for Network printer (LAN)
-            printer = ThermalPrinter(
-                printer_type=PrinterType.FILE,  # Change to USB/SERIAL/NETWORK for actual printer
-                output_file="receipts/receipt_{}.txt".format(receipt_number)
-            )
-
-            # Prepare receipt items for printing
-            receipt_items = []
-            for item in items:
-                receipt_items.append({
-                    "product_name": item.get("product_name", "Unknown Product"),
-                    "quantity": item.get("quantity", 0),
-                    "unit_price": item.get("unit_price", 0),
-                })
-
-            # Get store info
-            store = self.store_service.get_primary_store()
-            store_name = store.get("name", "PharmaPOS Store") if store else "PharmaPOS Store"
-
-            # Print receipt
-            success = printer.print_receipt(
-                receipt_number=receipt_number,
-                store_name=store_name,
-                items=receipt_items,
-                subtotal=subtotal,
-                tax=tax,
-                total=total,
-                payment_method=payment_method,
-                amount_paid=amount_paid,
-                change=change,
-                customer_name=self.customer_input.text() or "Walk-in Customer",
-                cashier_name=self.user_session.username if self.user_session else "Cashier",
-            )
-
-            if success:
-                print(f"Receipt #{receipt_number} printed successfully")
-            else:
-                print(f"Warning: Failed to print receipt #{receipt_number}")
-                
-            printer.close()
-
-        except Exception as e:
-            print(f"Error printing receipt: {str(e)}")
 
     

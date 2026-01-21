@@ -195,6 +195,12 @@ sales = Table(
     Column("gateway_response", Text, nullable=True),
     Column("change_amount", Numeric(10, 2), server_default=text("0"), nullable=False),
     Column(
+        "customer_id",
+        Integer,
+        ForeignKey("customers.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    ),
+    Column(
         "user_id",
         Integer,
         ForeignKey("users.id", ondelete="RESTRICT", onupdate="CASCADE"),
@@ -494,6 +500,38 @@ backorders = Table(
 )
 
 
+# customers (customer database)
+customers = Table(
+    "customers",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String, nullable=False),
+    Column("phone", String, nullable=False),
+    Column("email", String),
+    Column("address", Text),
+    Column("loyalty_points", Integer, server_default=text("0"), nullable=False),
+    Column("total_purchases", Numeric(10, 2), server_default=text("0"), nullable=False),
+    Column("last_purchase_date", DateTime),
+    Column("is_active", Boolean, server_default=text("1"), nullable=False),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
+)
+
+Index("idx_customers_phone", customers.c.phone)
+Index("idx_customers_name", customers.c.name)
+
+
 # inventory_reconciliations (stock taking)
 inventory_reconciliations = Table(
     "inventory_reconciliations",
@@ -557,6 +595,87 @@ reconciliation_items = Table(
     Column("last_synced_at", DateTime, nullable=True),
     Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
+
+
+# activity_logs (audit trail for user actions)
+activity_logs = Table(
+    "activity_logs",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("username", String, nullable=False),  # Denormalized for historical record
+    Column("action", String, nullable=False),  # 'login', 'logout', 'sale', 'stock_add', 'user_create', etc.
+    Column("entity_type", String),  # 'sale', 'product', 'user', 'stock', etc.
+    Column("entity_id", Integer),  # ID of affected entity
+    Column("details", Text),  # JSON or text description of the action
+    Column("ip_address", String),
+    Column("store_id", Integer, ForeignKey("stores.id", ondelete="SET NULL")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
+Index("idx_activity_logs_user", activity_logs.c.user_id)
+Index("idx_activity_logs_action", activity_logs.c.action)
+Index("idx_activity_logs_created", activity_logs.c.created_at)
+
+
+# system_settings (configuration storage)
+system_settings = Table(
+    "system_settings",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("key", String, nullable=False, unique=True),
+    Column("value", Text),  # JSON or plain text
+    Column("category", String),  # 'tax', 'business', 'receipt', 'printer', 'general'
+    Column("description", Text),
+    Column("data_type", String, server_default=text("'string'")),  # 'string', 'number', 'boolean', 'json'
+    Column("updated_by", Integer, ForeignKey("users.id", ondelete="SET NULL")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+)
+
+Index("idx_settings_key", system_settings.c.key, unique=True)
+Index("idx_settings_category", system_settings.c.category)
+
+
+# compliance_alerts (NAFDAC, PCN, expiry notifications)
+compliance_alerts = Table(
+    "compliance_alerts",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("alert_type", String, nullable=False),  # 'expiry', 'stock_discrepancy', 'nafdac', 'pcn'
+    Column("severity", String, server_default=text("'medium'")),  # 'low', 'medium', 'high', 'critical'
+    Column("title", String, nullable=False),
+    Column("message", Text, nullable=False),
+    Column("entity_type", String),  # 'product', 'batch', 'store'
+    Column("entity_id", Integer),
+    Column("store_id", Integer, ForeignKey("stores.id", ondelete="CASCADE")),
+    Column("is_resolved", Boolean, server_default=text("0"), nullable=False),
+    Column("resolved_at", DateTime),
+    Column("resolved_by", Integer, ForeignKey("users.id", ondelete="SET NULL")),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+)
+
+Index("idx_compliance_alerts_type", compliance_alerts.c.alert_type)
+Index("idx_compliance_alerts_severity", compliance_alerts.c.severity)
+Index("idx_compliance_alerts_resolved", compliance_alerts.c.is_resolved)
 
 
 # sync_logs
@@ -755,5 +874,9 @@ __all__ = [
     "backorders",
     "inventory_reconciliations",
     "reconciliation_items",
+    "activity_logs",
+    "system_settings",
+    "compliance_alerts",
     "sync_logs",
+    "customers",
 ]

@@ -1,0 +1,46 @@
+# Quick Add Stock Method - Add this to MainWindow class in ui.py
+
+def quick_add_stock(self) -> None:
+    """Open quick add stock dialog for simplified stock addition."""
+    try:
+        from desktop_app.quick_stock import QuickStockAddDialog
+        
+        # Open quick add dialog
+        dialog = QuickStockAddDialog(self.session, self)
+        if dialog.exec_() == QDialog.Accepted:
+            data = dialog.result_data
+            if not data:
+                return
+            
+            # Use InventoryService to receive stock
+            inv_service = InventoryService(self.session)
+            user_id = getattr(self.user_session, "user_id", 1)
+            
+            batch = inv_service.receive_stock(
+                product_id=data['product_id'],
+                store_id=data['store_id'],
+                batch_number=data['batch_number'],
+                quantity=data['quantity'],
+                expiry_date=data['expiry_date'],
+                cost_price=data['cost_price'],
+                user_id=user_id,
+            )
+            
+            QMessageBox.information(
+                self,
+                "Stock Added Successfully",
+                f"Stock added successfully!\\n\\n"
+                f"Batch #: {data['batch_number']}\\n"
+                f"Quantity: {data['quantity']} units\\n"
+                f"Expiry Date: {data['expiry_date']}\\n"
+                f"Cost Price: ₦{data['cost_price']}\\n"
+                f"Retail Price: ₦{data['retail_price']}",
+            )
+            
+            # Refresh inventory table
+            self.refresh_inventory_table()
+            
+    except Exception as e:
+        QMessageBox.critical(self, "Error", f"Failed to add stock: {str(e)}")
+        import traceback
+        traceback.print_exc()

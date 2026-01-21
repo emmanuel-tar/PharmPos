@@ -1,0 +1,27 @@
+2025-12-07 14:53:46 - desktop_app.analytics - ERROR - [analytics.py:116] - Error getting sales trend: 'str' object has no attribute 'isoformat'
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\analytics.py", line 106, in get_sales_trend
+    return [
+           ^
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\analytics.py", line 108, in <listcomp>
+    'date': row.date.isoformat() if row.date else '',
+            ^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'isoformat'
+2025-12-07 15:08:11 - desktop_app.analytics - ERROR - [analytics.py:116] - Error getting sales trend: 'str' object has no attribute 'isoformat'
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\analytics.py", line 106, in get_sales_trend
+    return [
+           ^
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\analytics.py", line 108, in <listcomp>
+    'date': row.date.isoformat() if row.date else '',
+            ^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'isoformat'
+2025-12-07 15:10:49 - desktop_app.analytics - ERROR - [analytics.py:116] - Error getting sales trend: 'str' object has no attribute 'isoformat'
+Traceback (most recent call last):
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\analytics.py", line 106, in get_sales_trend
+    return [
+           ^
+  File "C:\Users\Tar Emmanuel\Desktop\projectx\PharmPos\desktop_app\analytics.py", line 108, in <listcomp>
+    'date': row.date.isoformat() if row.date else '',
+            ^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'isoformat'
