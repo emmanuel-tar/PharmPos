@@ -47,6 +47,7 @@ from .analytics import DashboardAnalytics
 from .dialogs import (
     PrinterSettingsDialog, StockReceivingDialog, SalesCartDialog, LoginDialog
 )
+from .purchase_order_ui import PurchaseOrderUI
 
 
 class MainWindow(QMainWindow):
@@ -158,6 +159,14 @@ class MainWindow(QMainWindow):
 
         # Reports tab
         self.tabs.addTab(self.create_reports_tab(), "Reports")
+
+        # Purchase Order tabs
+        self.purchase_order_ui = PurchaseOrderUI(self)
+        self.tabs.addTab(self.purchase_order_ui.create_purchasing_tab(), "Purchasing")
+        self.tabs.addTab(self.purchase_order_ui.create_purchase_order_tab(), "Purchase Orders")
+        self.tabs.addTab(self.purchase_order_ui.create_purchase_invoice_tab(), "Purchase Invoices")
+        self.tabs.addTab(self.purchase_order_ui.create_suppliers_tab(), "Suppliers")
+        self.tabs.addTab(self.purchase_order_ui.create_warehouse_tab(), "Warehouse")
 
         # Admin tab (only for admin users)
         if self.user_session.role.lower() == "admin":
@@ -956,4 +965,886 @@ class MainWindow(QMainWindow):
         col = 0
         max_cols = 2
 
-        for product
+        for product in products:
+            card = self.create_product_card(product)
+            self.products_cards_layout.addWidget(card, row, col)
+            col += 1
+            if col >= max_cols:
+                col = 0
+                row += 1
+
+    def create_product_card(self, product: dict) -> QWidget:
+        """Create a clickable product card for the sales grid."""
+        card = QWidget()
+        card.setStyleSheet(f"""
+            QWidget {{
+                background-color: {Colors.LIGHT};
+                border: 2px solid {Colors.LIGHT_MEDIUM};
+                border-radius: 8px;
+                padding: 15px;
+            }}
+            QWidget:hover {{
+                background-color: {Colors.LIGHT};
+                border: 2px solid {Colors.PRIMARY};
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            }}
+        """)
+        card.setCursor(Qt.PointingHandCursor)
+        card.setMinimumHeight(220)
+        layout = QVBoxLayout(card)
+        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Product image placeholder
+        image_label = QLabel()
+        image_label.setMinimumHeight(120)
+        image_label.setStyleSheet(f"background-color: {Colors.LIGHT_MEDIUM}; border-radius: 5px; font-size: 9px;")
+        image_label.setAlignment(Qt.AlignCenter)
+        image_label.setText("📦 No Image")
+        layout.addWidget(image_label)
+
+        # Product name
+        name_label = QLabel(product['name'])
+        name_label.setWordWrap(True)
+        name_label.setStyleSheet("font-weight: bold; font-size: 8px; color: #333;")
+        layout.addWidget(name_label)
+
+        # Stock info
+        stock_label = QLabel(f"Stock: {product.get('quantity', 0)} units")
+        stock_label.setStyleSheet("font-size: 7px; color: #666; font-weight: 500;")
+        layout.addWidget(stock_label)
+
+        # Price
+        price_label = QLabel(f"₦{product.get('retail_price', product.get('selling_price', 0)):.2f}")
+        price_label.setStyleSheet("font-weight: bold; font-size: 9px; color: #28a745; padding: 5px 0px;")
+        layout.addWidget(price_label)
+
+        # Store product data on card
+        card.product_id = product['id']
+        card.product_name = product['name']
+        card.product_price = float(product.get('retail_price', product.get('selling_price', 0)))
+
+        # Make card clickable
+        def on_card_clicked():
+            self.add_product_to_sales_cart(product)
+
+        card.mousePressEvent = lambda event: on_card_clicked()
+
+        return card
+
+    def add_product_to_sales_cart(self, product: dict) -> None:
+        """Add product to sales cart with stock level checking."""
+        try:
+            # Check available stock before adding
+            available_stock = product.get('quantity', 0)
+            if available_stock <= 0:
+                show_error(self, f"{product['name']} is out of stock")
+                return
+
+            # Check if product already in cart
+            for row in range(self.sales_cart_table.rowCount()):
+                name_item = self.sales_cart_table.item(row, 1)
+                if name_item and name_item.text() == product['name']:
+                    # Check if incrementing would exceed available stock
+                    qty_item = self.sales_cart_table.item(row, 3)
+                    current_qty = int(qty_item.text())
+                    if current_qty + 1 > available_stock:
+                        show_error(self, f"Only {available_stock} unit(s) available for {product['name']}")
+                        return
+                    # Increment quantity
+                    qty_item.setText(str(current_qty + 1))
+                    # Update total
+                    price = float(self.sales_cart_table.item(row, 2).text().replace('₦', '').strip())
+                    new_qty = current_qty + 1
+                    total = price * new_qty
+                    self.sales_cart_table.setItem(row, 5, QTableWidgetItem(f"₦{total:.2f}"))
+                    self.update_sales_summary()
+                    return
+
+            # Add new row to cart
+            row = self.sales_cart_table.rowCount()
+            self.sales_cart_table.insertRow(row)
+            price = float(product.get('retail_price', product.get('selling_price', 0)))
+            # Item # (row number)
+            item_num = QTableWidgetItem(str(row + 1))
+            item_num.setTextAlignment(Qt.AlignCenter)
+            item_num.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 0, item_num)
+            # Product Name
+            name_item = QTableWidgetItem(product['name'])
+            name_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 1, name_item)
+            name_item.product_id = product['id']
+            # Price
+            price_item = QTableWidgetItem(f"₦{price:.2f}")
+            price_item.setTextAlignment(Qt.AlignRight)
+            price_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 2, price_item)
+            # Quantity (default 1)
+            qty_item = QTableWidgetItem("1")
+            qty_item.setTextAlignment(Qt.AlignCenter)
+            qty_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 3, qty_item)
+            # Discount (default 0%)
+            discount_item = QTableWidgetItem("0%")
+            discount_item.setTextAlignment(Qt.AlignCenter)
+            discount_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 4, discount_item)
+            # Total (price * 1)
+            total_item = QTableWidgetItem(f"₦{price:.2f}")
+            total_item.setTextAlignment(Qt.AlignRight)
+            total_item.setFont(QFont("Arial", 9, QFont.Bold))
+            self.sales_cart_table.setItem(row, 5, total_item)
+            # Delete button
+            delete_btn = StyledButton("Delete", "danger")
+            delete_btn.setMaximumWidth(80)
+            delete_btn.clicked.connect(lambda _, r=row: self.remove_from_cart(r))
+            self.sales_cart_table.setCellWidget(row, 6, delete_btn)
+            # Set row height for better visibility
+            self.sales_cart_table.setRowHeight(row, 48)
+            self.update_sales_summary()
+        except Exception as e:
+            show_error(self, f"Failed to add product: {str(e)}")
+
+    def remove_from_cart(self, row: int) -> None:
+        """Remove item from sales cart."""
+        self.sales_cart_table.removeRow(row)
+        self.update_sales_summary()
+
+    def clear_sales_cart(self) -> None:
+        """Clear all items from the sales cart."""
+        if self.sales_cart_table.rowCount() > 0:
+            if ask_confirmation(self, "Are you sure you want to clear the entire cart?"):
+                self.sales_cart_table.setRowCount(0)
+                self.update_sales_summary()
+                self.item_scanner.clear()
+                self.item_scanner.setFocus()
+
+    def update_sales_summary(self) -> None:
+        """Update cart summary (subtotal, tax, total) and change calculation."""
+        subtotal = 0.0
+
+        for row in range(self.sales_cart_table.rowCount()):
+            qty_text = self.sales_cart_table.item(row, 3).text() if self.sales_cart_table.item(row, 3) else "0"
+            price_text = self.sales_cart_table.item(row, 2).text() if self.sales_cart_table.item(row, 2) else "0"
+
+            # Remove currency symbol if present
+            qty = int(qty_text) if qty_text else 0
+            price = float(price_text.replace('₦', '').strip()) if price_text else 0.0
+            subtotal += qty * price
+
+        # Calculate tax and total
+        tax = subtotal * 0.075  # 7.5% VAT
+        total = subtotal + tax
+
+        # Update labels
+        self.subtotal_label.setText(f"₦{subtotal:.2f}")
+        self.discount_label.setText(f"₦0.00")
+        self.tax_label.setText(f"₦{tax:.2f}")
+        self.total_amount_label.setText(f"₦{total:.2f}")
+
+        # Update amount paid default
+        self.sales_amount_paid.setValue(total)
+
+        # Calculate and display change
+        amount_paid = self.sales_amount_paid.value()
+        change = amount_paid - total
+
+        # Display change in blue if positive, red if negative (insufficient payment)
+        if change >= 0:
+            self.sales_change_label.setStyleSheet(f"font-size: 11px; font-weight: bold; color: {Colors.INFO}; min-width: 100px; padding-right: 10px;")
+            self.sales_change_label.setText(f"₦{change:.2f}")
+        else:
+            self.sales_change_label.setStyleSheet(f"font-size: 11px; font-weight: bold; color: {Colors.DANGER}; min-width: 100px; padding-right: 10px;")
+            self.sales_change_label.setText(f"₦{abs(change):.2f} (Shortfall)")
+
+    def on_product_search(self) -> None:
+        """Filter products based on search input."""
+        search_text = self.product_search.text().lower()
+        try:
+            if search_text:
+                products = self.product_service.get_all_products(active_only=True)
+                filtered = [
+                    p for p in products
+                    if search_text in p['name'].lower()
+                    or search_text in p.get('sku', '').lower()
+                    or search_text in p.get('barcode', '').lower()
+                ]
+            else:
+                filtered = self.product_service.get_all_products(active_only=True)
+
+            # Clear and reload
+            for i in reversed(range(self.products_cards_layout.count())):
+                self.products_cards_layout.itemAt(i).widget().setParent(None)
+
+            row = 0
+            col = 0
+            max_cols = 2
+            for product in filtered:
+                card = self.create_product_card(product)
+                self.products_cards_layout.addWidget(card, row, col)
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+        except Exception as e:
+            show_error(self, f"Search failed: {str(e)}")
+
+    def on_barcode_scanned(self) -> None:
+        """Handle barcode scanner input - automatically add item to cart."""
+        barcode_or_sku = self.item_scanner.text().strip()
+        if not barcode_or_sku:
+            return
+
+        try:
+            # Search for product by barcode or SKU
+            all_products = self.product_service.get_all_products(active_only=True)
+            product = None
+            for p in all_products:
+                if (p.get('barcode', '').strip() == barcode_or_sku or
+                    p.get('sku', '').strip() == barcode_or_sku):
+                    product = p
+                    break
+            if not product:
+                show_error(self, f"No product found with barcode/SKU: {barcode_or_sku}")
+                self.item_scanner.clear()
+                return
+            # Auto-add to cart (no popup)
+            self.add_product_to_sales_cart(product)
+            # Clear scanner field for next scan
+            self.item_scanner.clear()
+            self.item_scanner.setFocus()
+        except Exception as e:
+            show_error(self, f"Failed to process barcode: {str(e)}")
+            self.item_scanner.clear()
+
+    def complete_sale(self) -> None:
+        """Complete sale transaction with payment."""
+        try:
+            # Check if cart has items
+            if self.sales_cart_table.rowCount() == 0:
+                show_error(self, "Add items to cart first")
+                return
+
+            # Get payment details
+            payment_method = self.sales_payment_method.currentText()
+            amount_paid = self.sales_amount_paid.value()
+
+            # Extract cart items from table (new structure: Item#, Product, Price, Qty, Disc%, Total)
+            cart_items = []
+            subtotal = 0.0
+
+            for row in range(self.sales_cart_table.rowCount()):
+                name_item = self.sales_cart_table.item(row, 1)  # Product name in column 1
+                price_item = self.sales_cart_table.item(row, 2)  # Price in column 2
+                qty_item = self.sales_cart_table.item(row, 3)  # Qty in column 3
+
+                if name_item and price_item and qty_item:
+                    name = name_item.text()
+                    price_text = price_item.text().replace('₦', '').strip()
+                    price = float(price_text) if price_text else 0.0
+                    qty = int(qty_item.text()) if qty_item.text() else 0
+
+                    if qty > 0:
+                        product_id = getattr(name_item, 'product_id', None)
+                        cart_items.append({
+                            "product_id": product_id,
+                            "product_name": name,
+                            "unit_price": price,
+                            "quantity": qty,
+                        })
+                        subtotal += price * qty
+
+            if not cart_items:
+                show_error(self, "Add items to cart first")
+                return
+
+            # Calculate tax and total
+            tax = subtotal * 0.075  # 7.5% VAT
+            total_amount = subtotal + tax
+
+            if amount_paid < total_amount:
+                show_error(self, f"Insufficient Payment\nSubtotal: ₦{subtotal:.2f}\nTax (7.5%): ₦{tax:.2f}\nTotal: ₦{total_amount:.2f}\nPaid: ₦{amount_paid:.2f}\nShortfall: ₦{total_amount - amount_paid:.2f}")
+                return
+
+            # Allocate batches using FEFO for each product
+            sales_service = SalesService(get_session())
+            inventory_service = InventoryService(get_session())
+            store = self.store_service.get_primary_store()
+
+            allocated_items = []
+            for cart_item in cart_items:
+                # Get available batches for product (FEFO - earliest expiry first)
+                batches = inventory_service.get_available_batches(
+                    product_id=cart_item["product_id"],
+                    store_id=store["id"],
+                    quantity_needed=cart_item["quantity"],
+                )
+
+                if not batches or sum(b["available_quantity"] for b in batches) < cart_item["quantity"]:
+                    show_error(self, f"Not enough stock for {cart_item['product_name']}\nNeeded: {cart_item['quantity']}\nAvailable: {sum(b['available_quantity'] for b in batches)}")
+                    return
+
+                # Allocate from batches
+                remaining_qty = cart_item["quantity"]
+                for batch in batches:
+                    if remaining_qty <= 0:
+                        break
+
+                    qty_to_take = min(remaining_qty, batch["available_quantity"])
+                    allocated_items.append({
+                        "batch_id": batch["id"],
+                        "quantity": qty_to_take,
+                        "unit_price": cart_item["unit_price"],
+                    })
+                    remaining_qty -= qty_to_take
+
+            # Create sale
+            sale_result = sales_service.create_sale(
+                user_id=self.user_session.user_id,
+                store_id=store["id"],
+                items=allocated_items,
+                payment_method=payment_method,
+                amount_paid=Decimal(str(amount_paid)),
+            )
+
+            change = amount_paid - total_amount
+            show_success(self, f"Sale Completed\nReceipt #: {sale_result['receipt_number']}\nSubtotal: ₦{subtotal:.2f}\nTax (7.5%): ₦{tax:.2f}\nTotal: ₦{total_amount:.2f}\nAmount Paid: ₦{amount_paid:.2f}\nChange: ₦{change:.2f}")
+
+            # Print receipt to thermal printer
+            self.print_thermal_receipt(
+                receipt_number=str(sale_result['receipt_number']),
+                items=cart_items,
+                subtotal=subtotal,
+                tax=tax,
+                total=total_amount,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+                change=change,
+            )
+
+            # Clear cart and reset UI
+            self.sales_cart_table.setRowCount(0)
+            self.customer_input.clear()
+            self.sales_amount_paid.setValue(0)
+            self.sales_payment_method.setCurrentIndex(0)
+            self.update_sales_summary()
+
+        except Exception as e:
+            show_error(self, f"Failed to complete sale: {str(e)}")
+
+    def print_thermal_receipt(self, receipt_number: str, items: list, subtotal: float, tax: float, total: float,
+                              payment_method: str, amount_paid: float, change: float) -> None:
+        """Format and send the receipt to thermal printer using configured settings or file fallback."""
+        try:
+            from .thermal_printer import ThermalPrinter, format_receipt
+            from .config import get_printer_device_info
+
+            store = self.store_service.get_primary_store() if hasattr(self, 'store_service') else None
+
+            receipt_text = format_receipt(
+                receipt_number=str(receipt_number),
+                items=items,
+                subtotal=subtotal,
+                tax=tax,
+                total=total,
+                payment_method=payment_method,
+                amount_paid=amount_paid,
+                change=change,
+                store=store,
+            )
+
+            # Load printer config and use it, or fallback to file
+            config = load_printer_config()
+            if not config.get('enabled', False):
+                backend_config = None
+            else:
+                printer_type = config.get('type', 'FILE')
+                device_info = get_printer_device_info(printer_type, config)
+                backend_config = {'type': printer_type, 'device_info': device_info}
+
+            printer = ThermalPrinter(backend=backend_config)
+            result = printer.print_text(receipt_text)
+
+            if result.get('status') == 'printed':
+                show_message(self, 'Printer', 'Receipt sent to thermal printer.')
+            else:
+                path = result.get('path')
+                show_message(self, 'Receipt Saved', f'Receipt saved to: {path}')
+
+        except Exception as e:
+            show_error(self, f'Failed to print receipt: {e}')
+
+    def receive_stock(self) -> None:
+        """Open dialog to receive stock with comprehensive pricing and alerts."""
+        try:
+            # Open receiving dialog
+            dialog = StockReceivingDialog(self.session, self)
+            if dialog.exec_() == QDialog.Accepted:
+                data = dialog.result_data
+                if not data:
+                    return
+
+                # Use InventoryService to receive stock
+                inv_service = InventoryService(self.session)
+                user_id = getattr(self.user_session, "user_id", 1)
+
+                batch = inv_service.receive_stock(
+                    product_id=data["product_id"],
+                    store_id=data["store_id"],
+                    batch_number=data["batch_number"],
+                    quantity=data["quantity"],
+                    expiry_date=data["expiry_date"],
+                    cost_price=data["cost_price"],
+                    retail_price=data.get("retail_price"),
+                    bulk_price=data.get("bulk_price"),
+                    bulk_quantity=data.get("bulk_quantity"),
+                    wholesale_price=data.get("wholesale_price"),
+                    wholesale_quantity=data.get("wholesale_quantity"),
+                    min_stock=data.get("min_stock", 0),
+                    max_stock=data.get("max_stock", 9999),
+                    reorder_level=data.get("reorder_level"),
+                )
+
+                show_success(self, f"Stock received successfully!\n\nBatch ID: {batch['id']}\nQuantity: {data['quantity']} units\nExpiry Date: {data['expiry_date']}\nCost Price: ₦{data['cost_price']}\nRetail Price: ₦{batch.get('retail_price', 'N/A')}\nStock Alerts: Min={data.get('min_stock', 0)}, Max={data.get('max_stock', 9999)}\nStore: {data['store_id']}")
+
+                # Refresh inventory table
+                self.refresh_inventory_table()
+
+        except Exception as e:
+            show_error(self, f"Failed to receive stock: {str(e)}")
+
+    def refresh_inventory_table(self) -> None:
+        """Refresh inventory table with current stock batches."""
+        try:
+            inv_service = InventoryService(self.session)
+            store = self.store_service.get_primary_store()
+            if not store:
+                return
+
+            # Get all batches for primary store (ordered by expiry - FEFO)
+            batches = inv_service.get_store_inventory(store["id"])
+            self.inventory_table.setRowCount(len(batches))
+
+            for i, batch in enumerate(batches):
+                self.inventory_table.setItem(i, 0, QTableWidgetItem(str(batch["id"])))
+                self.inventory_table.setItem(i, 1, QTableWidgetItem(str(batch["product_id"])))
+                self.inventory_table.setItem(i, 2, QTableWidgetItem(batch["batch_number"]))
+                self.inventory_table.setItem(i, 3, QTableWidgetItem(str(batch["expiry_date"])))
+                self.inventory_table.setItem(i, 4, QTableWidgetItem(str(batch["quantity"])))
+
+            inv_service.session.close()
+        except Exception as e:
+            show_error(self, f"Failed to refresh inventory: {str(e)}")
+
+    def printer_test(self) -> None:
+        """Send a small test print using the configured thermal printer."""
+        try:
+            from datetime import datetime
+
+            config = load_printer_config()
+            if not config.get('enabled', False):
+                show_message(self, 'Printer Test', 'Printer is disabled. Saving to file (fallback).')
+                backend_config = None
+            else:
+                printer_type = config.get('type', 'FILE')
+                device_info = get_printer_device_info(printer_type, config)
+                backend_config = {'type': printer_type, 'device_info': device_info}
+
+            printer = ThermalPrinter(backend=backend_config)
+            test_text = (
+                "PRINTER TEST\n"
+                "PharmaPOS Thermal Printer Test\n"
+                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                "------------------------------\n"
+                "This is a test print.\n"
+            )
+            res = printer.print_text(test_text)
+            if res.get("status") == "printed":
+                show_success(self, "Test printed to device successfully!")
+            else:
+                path = res.get("path")
+                show_message(self, 'Printer Test', f'Test saved to file: {path}\n\n(Printer may be disabled or unavailable.)')
+        except Exception as e:
+            show_error(self, f'Printer test failed: {e}')
+
+    def reprint_last_receipt(self) -> None:
+        """Re-generate and print (or save) the most recent sale receipt using configured printer."""
+        try:
+            # Local imports to avoid top-level dependencies
+            from .database import sales as sales_table, sale_items as sale_items_table, product_batches, products
+            from .config import get_printer_device_info
+            from sqlalchemy import select
+            from .thermal_printer import ThermalPrinter, format_receipt
+
+            session = get_session()
+            # Fetch most recent sale
+            stmt = select(sales_table).order_by(sales_table.c.created_at.desc())
+            row = session.execute(stmt).fetchone()
+            if not row:
+                show_message(self, 'Reprint', 'No sales found to reprint.')
+                return
+
+            sale = dict(row._mapping)
+            sale_id = sale['id']
+
+            # Get sale items
+            sales_service = SalesService(session)
+            items = sales_service.get_sale_items(sale_id)
+
+            # Build printable items list with product names
+            printable_items = []
+            for it in items:
+                # Lookup batch and product
+                batch_row = session.execute(select(product_batches).where(product_batches.c.id == it['product_batch_id'])).fetchone()
+                batch = dict(batch_row._mapping) if batch_row else None
+                prod = None
+                if batch:
+                    prod_row = session.execute(select(products).where(products.c.id == batch['product_id'])).fetchone()
+                    prod = dict(prod_row._mapping) if prod_row else None
+
+                printable_items.append({
+                    'product_name': prod['name'] if prod else f"Batch {batch.get('batch_number') if batch else it['product_batch_id']}",
+                    'quantity': it['quantity'],
+                    'unit_price': float(it['unit_price']),
+                })
+
+            store = self.store_service.get_primary_store()
+            receipt_text = format_receipt(
+                receipt_number=sale['receipt_number'],
+                items=printable_items,
+                subtotal=float(sale.get('total_amount', 0)),
+                tax=0.0,
+                total=float(sale.get('total_amount', 0)),
+                payment_method=sale.get('payment_method', 'Unknown'),
+                amount_paid=float(sale.get('amount_paid', 0)),
+                change=float(sale.get('change_amount', 0)),
+                store=store,
+            )
+
+            config = load_printer_config()
+            if not config.get('enabled', False):
+                backend_config = None
+            else:
+                printer_type = config.get('type', 'FILE')
+                device_info = get_printer_device_info(printer_type, config)
+                backend_config = {'type': printer_type, 'device_info': device_info}
+
+            printer = ThermalPrinter(backend=backend_config)
+            res = printer.print_text(receipt_text)
+            if res.get("status") == "printed":
+                show_message(self, 'Reprint', 'Receipt sent to printer.')
+            else:
+                show_message(self, 'Reprint', f'Receipt saved to: {res.get("path")}')
+
+        except Exception as e:
+            show_error(self, f'Failed to reprint receipt: {e}')
+
+    def expire_batches_action(self) -> None:
+        """UI action to expire batches within given days for selected store."""
+        try:
+            days = int(self.expiry_days_input.value())
+            store_text = self.expiry_store_input.text().strip()
+            if store_text:
+                try:
+                    store_id = int(store_text)
+                except ValueError:
+                    show_error(self, "Input Error", "Store ID must be an integer")
+                    return
+            else:
+                store = self.store_service.get_primary_store()
+                if not store:
+                    show_error(self, "Store Error", "No primary store configured")
+                    return
+                store_id = store["id"]
+
+            inv_service = InventoryService(self.session)
+            # Use current user id if available, otherwise 0
+            user_id = getattr(self.user_session, "user_id", 0)
+            expired_count = inv_service.expire_batches_within_days(store_id, days, user_id)
+            show_message(self, "Expiry Result", f"Expired {expired_count} batches")
+            inv_service.session.close()
+        except Exception as e:
+            show_error(self, f"Failed to expire batches: {str(e)}")
+
+    def generate_report(self) -> None:
+        """Generate selected report."""
+        report_type = self.report_type.currentText()
+        show_message(self, "Report", f"Generated {report_type} report (demo)")
+
+    def open_printer_settings(self) -> None:
+        """Open printer settings dialog."""
+        dialog = PrinterSettingsDialog(self)
+        dialog.exec_()
+
+    def logout(self) -> None:
+        """Logout user."""
+        self.auth_service.logout(self.user_session.session_id)
+        self.close()
+
+    # ===== STOCK TAB METHODS =====
+
+    def quick_add_stock(self) -> None:
+        """Quick add stock functionality."""
+        show_message(self, "Quick Add Stock", "Quick add stock dialog would open here.")
+
+    def load_stock_table(self) -> None:
+        """Load stock data into table."""
+        try:
+            # Mock data for now
+            stock_data = [
+                ["Paracetamol 500mg", "PARA500", 150, 25.50, 35.00, "Good"],
+                ["Amoxicillin 250mg", "AMOX250", 75, 45.00, 60.00, "Low"],
+                ["Ibuprofen 200mg", "IBU200", 200, 15.00, 22.00, "Good"],
+            ]
+
+            self.stock_table.setRowCount(len(stock_data))
+            for i, item in enumerate(stock_data):
+                for j, value in enumerate(item):
+                    table_item = QTableWidgetItem(str(value))
+                    if j == 5 and value == "Low":  # Highlight low stock
+                        table_item.setBackground(Qt.yellow)
+                        table_item.setForeground(Qt.black)
+                    self.stock_table.setItem(i, j, table_item)
+        except Exception as e:
+            show_error(self, f"Failed to load stock data: {str(e)}")
+
+    # ===== PRODUCTS TAB METHODS =====
+
+    def show_create_product_dialog(self) -> None:
+        """Show dialog to create a new product with pricing tiers and stock alerts."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Create New Product")
+        dialog.setGeometry(200, 200, 600, 800)
+
+        main_layout = QVBoxLayout()
+
+        # Scrollable area for form
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
+
+        # ===== SECTION 1: Basic Product Information =====
+        layout.addWidget(QLabel("<b>Product Information</b>"))
+        layout.addWidget(self._create_separator())
+
+        # Name
+        layout.addWidget(QLabel("Product Name:"))
+        name_input = QLineEdit()
+        layout.addWidget(name_input)
+
+        # Generic Name
+        layout.addWidget(QLabel("Generic Name (Optional):"))
+        generic_input = QLineEdit()
+        layout.addWidget(generic_input)
+
+        # SKU
+        layout.addWidget(QLabel("SKU:"))
+        sku_input = QLineEdit()
+        layout.addWidget(sku_input)
+
+        # Barcode
+        layout.addWidget(QLabel("Barcode (Optional):"))
+        barcode_input = QLineEdit()
+        layout.addWidget(barcode_input)
+
+        # NAFDAC Number
+        layout.addWidget(QLabel("NAFDAC Number:"))
+        nafdac_input = QLineEdit()
+        layout.addWidget(nafdac_input)
+
+        layout.addSpacing(10)
+
+        # ===== SECTION 2: Cost & Basic Pricing =====
+        layout.addWidget(QLabel("<b>Cost & Basic Pricing</b>"))
+        layout.addWidget(self._create_separator())
+
+        # Cost Price
+        layout.addWidget(QLabel("Cost Price (₦):"))
+        cost_input = QDoubleSpinBox()
+        cost_input.setMinimum(0)
+        cost_input.setMaximum(999999.99)
+        cost_input.setDecimals(2)
+        layout.addWidget(cost_input)
+
+        # Selling Price
+        layout.addWidget(QLabel("Selling Price (₦):"))
+        selling_input = QDoubleSpinBox()
+        selling_input.setMinimum(0)
+        selling_input.setMaximum(999999.99)
+        selling_input.setDecimals(2)
+        layout.addWidget(selling_input)
+
+        layout.addSpacing(10)
+
+        # ===== SECTION 3: Pricing Tiers =====
+        layout.addWidget(QLabel("<b>Pricing Tiers</b>"))
+        layout.addWidget(self._create_separator())
+
+        # Retail Price
+        layout.addWidget(QLabel("Retail Price (₦):"))
+        retail_input = QDoubleSpinBox()
+        retail_input.setMinimum(0)
+        retail_input.setMaximum(999999.99)
+        retail_input.setDecimals(2)
+        layout.addWidget(retail_input)
+
+        # Bulk Price Section
+        bulk_group = QGroupBox("Bulk Pricing (Optional)")
+        bulk_group.setStyleSheet(Styles.group_box())
+        bulk_layout = QHBoxLayout()
+        bulk_price_input = QDoubleSpinBox()
+        bulk_price_input.setMinimum(0)
+        bulk_price_input.setMaximum(999999.99)
+        bulk_price_input.setDecimals(2)
+        bulk_layout.addWidget(QLabel("Price (₦):"))
+        bulk_layout.addWidget(bulk_price_input)
+
+        bulk_quantity_input = QSpinBox()
+        bulk_quantity_input.setMinimum(1)
+        bulk_quantity_input.setMaximum(100000)
+        bulk_quantity_input.setValue(10)
+        bulk_layout.addWidget(QLabel("Min Qty:"))
+        bulk_layout.addWidget(bulk_quantity_input)
+        bulk_group.setLayout(bulk_layout)
+        layout.addWidget(bulk_group)
+
+        # Wholesale Price Section
+        wholesale_group = QGroupBox("Wholesale Pricing (Optional)")
+        wholesale_group.setStyleSheet(Styles.group_box())
+        wholesale_layout = QHBoxLayout()
+        wholesale_price_input = QDoubleSpinBox()
+        wholesale_price_input.setMinimum(0)
+        wholesale_price_input.setMaximum(999999.99)
+        wholesale_price_input.setDecimals(2)
+        wholesale_layout.addWidget(QLabel("Price (₦):"))
+        wholesale_layout.addWidget(wholesale_price_input)
+
+        wholesale_quantity_input = QSpinBox()
+        wholesale_quantity_input.setMinimum(1)
+        wholesale_quantity_input.setMaximum(100000)
+        wholesale_quantity_input.setValue(50)
+        wholesale_layout.addWidget(QLabel("Min Qty:"))
+        wholesale_layout.addWidget(wholesale_quantity_input)
+        wholesale_group.setLayout(wholesale_layout)
+        layout.addWidget(wholesale_group)
+
+        layout.addSpacing(10)
+
+        # ===== SECTION 4: Stock Alerts =====
+        layout.addWidget(QLabel("<b>Stock Alerts</b>"))
+        layout.addWidget(self._create_separator())
+
+        alert_layout = QHBoxLayout()
+        min_stock_input = QSpinBox()
+        min_stock_input.setMinimum(0)
+        min_stock_input.setMaximum(100000)
+        min_stock_input.setValue(10)
+        alert_layout.addWidget(QLabel("Min Stock:"))
+        alert_layout.addWidget(min_stock_input)
+
+        max_stock_input = QSpinBox()
+        max_stock_input.setMinimum(1)
+        max_stock_input.setMaximum(1000000)
+        max_stock_input.setValue(500)
+        alert_layout.addWidget(QLabel("Max Stock:"))
+        alert_layout.addWidget(max_stock_input)
+
+        reorder_input = QSpinBox()
+        reorder_input.setMinimum(0)
+        reorder_input.setMaximum(100000)
+        alert_layout.addWidget(QLabel("Reorder Level:"))
+        alert_layout.addWidget(reorder_input)
+        layout.addLayout(alert_layout)
+
+        layout.addSpacing(10)
+
+        # ===== SECTION 5: Description =====
+        layout.addWidget(QLabel("<b>Description</b>"))
+        layout.addWidget(self._create_separator())
+
+        layout.addWidget(QLabel("Description (Optional):"))
+        description_input = QTextEdit()
+        description_input.setMaximumHeight(80)
+        layout.addWidget(description_input)
+
+        layout.addStretch()
+        scroll.setWidget(scroll_widget)
+        main_layout.addWidget(scroll)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        def create_product():
+            try:
+                if not name_input.text().strip():
+                    show_error(dialog, "Product name is required")
+                    return
+                if not sku_input.text().strip():
+                    show_error(dialog, "SKU is required")
+                    return
+                if not nafdac_input.text().strip():
+                    show_error(dialog, "NAFDAC number is required")
+                    return
+                if min_stock_input.value() > max_stock_input.value():
+                    show_error(dialog, "Min stock cannot exceed max stock")
+                    return
+
+                # Use retail price as fallback if not set
+                retail_price = Decimal(str(retail_input.value())) if retail_input.value() > 0 else Decimal(str(selling_input.value()))
+
+                product = self.product_service.create_product(
+                    name=name_input.text().strip(),
+                    sku=sku_input.text().strip(),
+                    cost_price=Decimal(str(cost_input.value())),
+                    selling_price=Decimal(str(selling_input.value())),
+                    nafdac_number=nafdac_input.text().strip(),
+                    generic_name=generic_input.text().strip(),
+                    barcode=barcode_input.text().strip(),
+                    description=description_input.toPlainText().strip(),
+                    retail_price=retail_price,
+                    bulk_price=Decimal(str(bulk_price_input.value())) if bulk_price_input.value() > 0 else None,
+                    bulk_quantity=bulk_quantity_input.value() if bulk_price_input.value() > 0 else None,
+                    wholesale_price=Decimal(str(wholesale_price_input.value())) if wholesale_price_input.value() > 0 else None,
+                    wholesale_quantity=wholesale_quantity_input.value() if wholesale_price_input.value() > 0 else None,
+                    min_stock=min_stock_input.value(),
+                    max_stock=max_stock_input.value(),
+                    reorder_level=reorder_input.value() if reorder_input.value() > 0 else None,
+                )
+                show_success(dialog, f"Product created: {product['name']}\n\nRetail: ₦{product['retail_price']}\nBulk: ₦{product['bulk_price']}\nWholesale: ₦{product['wholesale_price']}\nStock Alerts: {product['min_stock']}-{product['max_stock']}")
+                self.load_products_table()
+                dialog.accept()
+            except Exception as e:
+                show_error(dialog, f"Failed to create product: {str(e)}")
+
+        create_btn = StyledButton("Create Product", "success")
+        create_btn.clicked.connect(create_product)
+        button_layout.addWidget(create_btn)
+
+        cancel_btn = StyledButton("Cancel", "danger")
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(cancel_btn)
+
+        main_layout.addLayout(button_layout)
+        dialog.setLayout(main_layout)
+        dialog.exec_()
+
+    def show_import_dialog(self) -> None:
+        """Show dialog to import products."""
+        file_filter = "CSV Files (*.csv);;JSON Files (*.json);;All Files (*.*)"
+        filepath, selected_filter = QFileDialog.getOpenFileName(
+            self, "Import Products", "", file_filter
+        )
+
+        if not filepath:
+            return
+
+        try:
+            exporter = ProductImportExporter(self.db_path)
+            
+            # Validate file first
+            file_format = "csv" if filepath.endswith(".csv") else "json"
+            is_valid, errors = exporter.validate_file(filepath, file_format)
+            
+            if not is_valid:

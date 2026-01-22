@@ -32,6 +32,8 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QShortcut,
     QStackedWidget,
+    QListWidget,
+    QListWidgetItem,
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QFont
@@ -44,6 +46,8 @@ from desktop_app.models import (
     ProductService,
     InventoryService,
     SalesService,
+    PurchaseOrderService,
+    SupplierService,
     get_session,
 )
 from desktop_app.sales import SalesTransaction
@@ -52,6 +56,7 @@ from desktop_app.inventory import BatchManager, InventoryAlerts
 from desktop_app.reports import SalesReporter, InventoryReporter
 from desktop_app.product_manager import ProductImportExporter
 from desktop_app.config import load_printer_config, save_printer_config
+from desktop_app.purchase_order_ui import PurchaseOrderUI
 
 
 class PrinterSettingsDialog(QDialog):
@@ -879,9 +884,13 @@ class MainWindow(QMainWindow):
         self.product_service = ProductService(session)
         self.inventory_service = InventoryService(session)
 
+        # Initialize purchase order UI
+        self.purchase_order_ui = PurchaseOrderUI(self)
+
         self.setup_ui()
         self.load_dashboard_data()
         self.setup_keyboard_shortcuts()
+        self.check_pending_approvals()
 
     def setup_keyboard_shortcuts(self) -> None:
         """Setup keyboard shortcuts for common actions."""
@@ -932,7 +941,7 @@ class MainWindow(QMainWindow):
     def create_sidebar(self) -> QWidget:
         """Create the left sidebar navigation with expandable purchasing submenu."""
         sidebar = QWidget()
-        sidebar.setFixedWidth(250)
+        sidebar.setFixedWidth(350)
         sidebar.setStyleSheet("""
             QWidget {
                 background-color: #2c3e50;
@@ -978,10 +987,11 @@ class MainWindow(QMainWindow):
                     color: #bdc3c7;
                     border: none;
                     text-align: left;
-                    padding: 12px 15px;
-                    font-size: 14px;
+                    padding: 15px 18px;
+                    font-size: 16px;
+                    font-weight: bold;
                     border-radius: 5px;
-                    margin: 2px 0px;
+                    margin: 3px 0px;
                 }
                 QPushButton:hover {
                     background-color: #34495e;
@@ -1404,99 +1414,8 @@ class MainWindow(QMainWindow):
         return widget
 
     def create_purchase_order_tab(self) -> QWidget:
-        """Create purchase order management tab."""
-        widget = QWidget()
-        layout = QVBoxLayout()
-
-        # Title
-        title = QLabel("PURCHASE ORDER MANAGEMENT")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #2c3e50;")
-        layout.addWidget(title)
-
-        # Control buttons
-        button_layout = QHBoxLayout()
-
-        create_po_btn = QPushButton("📝 Create Purchase Order")
-        create_po_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                border: none;
-                padding: 10px 15px;
-                border-radius: 5px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
-        """)
-        button_layout.addWidget(create_po_btn)
-
-        view_po_btn = QPushButton("👁 View Purchase Orders")
-        view_po_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 10px 15px;
-                border-radius: 5px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-        button_layout.addWidget(view_po_btn)
-
-        layout.addLayout(button_layout)
-
-        # Purchase Orders table
-        po_title = QLabel("Recent Purchase Orders")
-        po_title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px 0px; color: #34495e;")
-        layout.addWidget(po_title)
-
-        self.purchase_orders_table = QTableWidget()
-        self.purchase_orders_table.setColumnCount(6)
-        self.purchase_orders_table.setHorizontalHeaderLabels(
-            ["PO #", "Supplier", "Date", "Status", "Total", "Actions"]
-        )
-        self.purchase_orders_table.setColumnWidth(1, 200)
-        self.purchase_orders_table.setColumnWidth(5, 150)
-
-        # Sample data
-        sample_pos = [
-            ["PO-2024-001", "MediPharm Ltd", "2024-01-15", "Pending", "₦125,000", "View"],
-            ["PO-2024-002", "HealthCorp", "2024-01-20", "Approved", "₦89,500", "View"],
-            ["PO-2024-003", "PharmaPlus", "2024-01-25", "Delivered", "₦156,200", "View"],
-        ]
-
-        self.purchase_orders_table.setRowCount(len(sample_pos))
-        for i, po in enumerate(sample_pos):
-            for j, value in enumerate(po):
-                self.purchase_orders_table.setItem(i, j, QTableWidgetItem(value))
-
-            # Add action button
-            action_btn = QPushButton("👁 View")
-            action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f39c12;
-                    color: white;
-                    border: none;
-                    padding: 5px 10px;
-                    border-radius: 3px;
-                    font-size: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #e67e22;
-                }
-            """)
-            self.purchase_orders_table.setCellWidget(i, 5, action_btn)
-
-        layout.addWidget(self.purchase_orders_table)
-
-        return widget
+        """Create purchase order management tab using PurchaseOrderUI."""
+        return self.purchase_order_ui.create_purchase_order_tab()
 
     def create_purchase_invoice_tab(self) -> QWidget:
         """Create purchase invoice management tab."""
@@ -3821,6 +3740,136 @@ class MainWindow(QMainWindow):
         """Open printer settings dialog."""
         dialog = PrinterSettingsDialog(self)
         dialog.exec_()
+
+    def check_pending_approvals(self) -> None:
+        """Check for pending purchase orders that need approval and show notification."""
+        try:
+            # Check database for pending purchase orders
+            session = get_session()
+            po_service = PurchaseOrderService(session)
+            supplier_service = SupplierService(session)
+
+            # Get primary store
+            store_service = StoreService(session)
+            primary_store = store_service.get_primary_store()
+            if not primary_store:
+                session.close()
+                return
+
+            # Get submitted purchase orders (pending approval)
+            pending_pos = po_service.get_purchase_orders_by_status(primary_store["id"], status="submitted")
+
+            # Add supplier names to the POs
+            for po in pending_pos:
+                supplier = supplier_service.get_supplier(po["supplier_id"])
+                po["supplier_name"] = supplier["name"] if supplier else "Unknown Supplier"
+
+            if pending_pos:
+                # Show notification dialog
+                self.show_pending_approvals_notification(pending_pos)
+
+            session.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to check pending approvals: {str(e)}")
+
+    def show_pending_approvals_notification(self, pending_pos: list) -> None:
+        """Show notification dialog for pending purchase order approvals."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pending Purchase Order Approvals")
+        dialog.setModal(True)
+        dialog.setMinimumSize(600, 400)
+
+        layout = QVBoxLayout(dialog)
+
+        # Title
+        title = QLabel("Purchase Orders Awaiting Approval")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title)
+
+        # List of pending POs
+        list_widget = QListWidget()
+        for po in pending_pos:
+            item_text = f"PO #{po['id']} - {po['supplier_name']} - ₦{po.get('total_amount', 0):.2f} - {po['created_at'].strftime('%Y-%m-%d')}"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, po['id'])
+            list_widget.addItem(item)
+
+        layout.addWidget(list_widget)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        approve_btn = QPushButton("Approve Selected")
+        approve_btn.setStyleSheet("background-color: #28a745; color: white; padding: 8px 15px;")
+        approve_btn.clicked.connect(lambda: self.approve_selected_po(list_widget, dialog))
+        button_layout.addWidget(approve_btn)
+
+        reject_btn = QPushButton("Reject Selected")
+        reject_btn.setStyleSheet("background-color: #dc3545; color: white; padding: 8px 15px;")
+        reject_btn.clicked.connect(lambda: self.reject_selected_po(list_widget, dialog))
+        button_layout.addWidget(reject_btn)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.close)
+        button_layout.addWidget(close_btn)
+
+        layout.addLayout(button_layout)
+
+        dialog.exec_()
+
+    def approve_selected_po(self, list_widget: QListWidget, dialog: QDialog) -> None:
+        """Approve the selected purchase order."""
+        current_item = list_widget.currentItem()
+        if not current_item:
+            QMessageBox.warning(dialog, "Selection Required", "Please select a purchase order to approve.")
+            return
+
+        po_id = current_item.data(Qt.UserRole)
+        reply = QMessageBox.question(dialog, "Confirm Approval",
+                                   f"Are you sure you want to approve PO #{po_id}?",
+                                   QMessageBox.Yes | QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            try:
+                session = get_session()
+                po_service = PurchaseOrderService(session)
+                po_service.approve_purchase_order(po_id, getattr(self.user_session, "user_id", 1))
+                session.close()
+
+                QMessageBox.information(dialog, "Success", f"Purchase Order #{po_id} approved successfully.")
+                dialog.close()
+                self.check_pending_approvals()  # Refresh
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Failed to approve purchase order: {str(e)}")
+
+    def reject_selected_po(self, list_widget: QListWidget, dialog: QDialog) -> None:
+        """Reject the selected purchase order."""
+        current_item = list_widget.currentItem()
+        if not current_item:
+            QMessageBox.warning(dialog, "Selection Required", "Please select a purchase order to reject.")
+            return
+
+        po_id = current_item.data(Qt.UserRole)
+
+        reason, ok = QInputDialog.getText(dialog, "Reject Purchase Order",
+                                        "Please provide a reason for rejection:")
+
+        if ok and reason.strip():
+            try:
+                session = get_session()
+                po_service = PurchaseOrderService(session)
+                po_service.reject_purchase_order(po_id, getattr(self.user_session, "user_id", 1), reason.strip())
+                session.close()
+
+                QMessageBox.information(dialog, "Success", f"Purchase Order #{po_id} rejected.")
+                dialog.close()
+                self.check_pending_approvals()  # Refresh
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Failed to reject purchase order: {str(e)}")
+
+    def refresh_pending_approvals(self) -> None:
+        """Refresh the pending approvals list."""
+        self.check_pending_approvals()
 
     def logout(self) -> None:
         """Logout user."""

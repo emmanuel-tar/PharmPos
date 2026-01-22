@@ -28,6 +28,11 @@ from desktop_app.database import (
     sale_items,
     stock_transfers,
     inventory_audit,
+    suppliers,
+    purchase_orders,
+    purchase_order_items,
+    purchase_receipts,
+    purchase_receipt_items,
 )
 
 
@@ -1001,6 +1006,273 @@ class StockTransferService:
         return [dict(row._mapping) for row in results]
 
 
+# --- Supplier Service --------------------------------------------------------
+class SupplierService:
+    """Service for managing suppliers."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def create_supplier(
+        self,
+        name: str,
+        contact: str = "",
+        address: str = "",
+    ) -> dict:
+        """Create a new supplier."""
+        stmt = suppliers.insert().values(
+            name=name,
+            contact=contact,
+            address=address,
+            sync_id=str(uuid.uuid4()),
+        )
+        result = self.session.execute(stmt)
+        self.session.commit()
+        return {
+            "id": result.inserted_primary_key[0],
+            "name": name,
+            "contact": contact,
+            "address": address,
+        }
+
+    def get_supplier(self, supplier_id: int) -> Optional[dict]:
+        """Get supplier by ID."""
+        stmt = select(suppliers).where(suppliers.c.id == supplier_id)
+        result = self.session.execute(stmt).fetchone()
+        return dict(result._mapping) if result else None
+
+    def get_all_suppliers(self) -> List[dict]:
+        """Get all suppliers."""
+        stmt = select(suppliers).order_by(suppliers.c.name)
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def update_supplier(self, supplier_id: int, **kwargs) -> bool:
+        """Update supplier details."""
+        stmt = suppliers.update().where(suppliers.c.id == supplier_id).values(**kwargs)
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+    def delete_supplier(self, supplier_id: int) -> bool:
+        """Delete supplier (careful: cascading deletes)."""
+        stmt = suppliers.delete().where(suppliers.c.id == supplier_id)
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+
+# --- Purchase Order Service --------------------------------------------------
+class PurchaseOrderService:
+    """Service for managing purchase orders and related operations."""
+
+    def __init__(self, session: Session):
+        self.session = session
+        self.inventory_service = InventoryService(session)
+
+    def create_purchase_order(
+        self,
+        supplier_id: int,
+        store_id: int,
+        user_id: int,
+        items: List[dict],  # [{product_id, quantity_ordered, expected_cost_price, notes}]
+        expected_delivery_date: Optional[date] = None,
+        notes: str = "",
+    ) -> dict:
+        """Create a new purchase order with items."""
+        # Calculate total expected amount
+        total_expected = sum(
+            Decimal(str(item["quantity_ordered"])) * Decimal(str(item.get("expected_cost_price", 0)))
+            for item in items
+        )
+
+        # Generate PO number
+        po_number = self._generate_po_number(store_id)
+
+        # Create PO
+        po_stmt = purchase_orders.insert().values(
+            po_number=po_number,
+            supplier_id=supplier_id,
+            store_id=store_id,
+            user_id=user_id,
+            total_expected_amount=total_expected,
+            status="draft",
+            expected_delivery_date=expected_delivery_date,
+            notes=notes,
+            sync_id=str(uuid.uuid4()),
+        )
+        po_result = self.session.execute(po_stmt)
+        po_id = po_result.inserted_primary_key[0]
+
+        # Add PO items
+        for item in items:
+            item_stmt = purchase_order_items.insert().values(
+                purchase_order_id=po_id,
+                product_id=item["product_id"],
+                quantity_ordered=item["quantity_ordered"],
+                expected_cost_price=item.get("expected_cost_price"),
+                notes=item.get("notes", ""),
+            )
+            self.session.execute(item_stmt)
+
+        self.session.commit()
+        return {
+            "id": po_id,
+            "po_number": po_number,
+            "supplier_id": supplier_id,
+            "total_expected_amount": float(total_expected),
+            "status": "draft",
+        }
+
+    def submit_purchase_order(self, po_id: int, user_id: int) -> bool:
+        """Submit PO for approval."""
+        stmt = purchase_orders.update().where(purchase_orders.c.id == po_id).values(
+            status="submitted"
+        )
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+    def approve_purchase_order(self, po_id: int, approver_id: int, comments: str = "") -> bool:
+        """Approve a purchase order."""
+        stmt = purchase_orders.update().where(purchase_orders.c.id == po_id).values(
+            status="approved",
+            approved_by=approver_id,
+            approved_at=datetime.now(),
+        )
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+    def reject_purchase_order(self, po_id: int, approver_id: int, comments: str = "") -> bool:
+        """Reject a purchase order."""
+        stmt = purchase_orders.update().where(purchase_orders.c.id == po_id).values(
+            status="rejected",
+            approved_by=approver_id,
+            approved_at=datetime.now(),
+        )
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+    def receive_goods(
+        self,
+        po_id: int,
+        user_id: int,
+        receipts: List[dict],  # [{product_id, batch_number, expiry_date, received_quantity, actual_cost_price}]
+    ) -> dict:
+        """Receive goods against a purchase order."""
+        # Create receipt record
+        receipt_stmt = purchase_receipts.insert().values(
+            purchase_order_id=po_id,
+            received_by=user_id,
+            sync_id=str(uuid.uuid4()),
+        )
+        receipt_result = self.session.execute(receipt_stmt)
+        receipt_id = receipt_result.inserted_primary_key[0]
+
+        total_received_value = Decimal("0")
+
+        # Process each receipt item
+        for receipt in receipts:
+            product_id = receipt["product_id"]
+            batch_number = receipt["batch_number"]
+            expiry_date = receipt["expiry_date"]
+            quantity = receipt["received_quantity"]
+            cost_price = Decimal(str(receipt["actual_cost_price"]))
+
+            total_received_value += quantity * cost_price
+
+            # Add to receipt items
+            item_stmt = purchase_receipt_items.insert().values(
+                receipt_id=receipt_id,
+                product_id=product_id,
+                batch_number=batch_number,
+                expiry_date=expiry_date,
+                quantity=quantity,
+                cost_price=cost_price,
+            )
+            self.session.execute(item_stmt)
+
+            # Update PO item received quantity
+            po_item_stmt = (
+                purchase_order_items.update()
+                .where(purchase_order_items.c.purchase_order_id == po_id)
+                .where(purchase_order_items.c.product_id == product_id)
+                .values(quantity_received=purchase_order_items.c.quantity_received + quantity)
+            )
+            self.session.execute(po_item_stmt)
+
+            # Add to inventory
+            batch = self.inventory_service.receive_stock(
+                product_id=product_id,
+                store_id=self.get_purchase_order(po_id)["store_id"],
+                batch_number=batch_number,
+                quantity=quantity,
+                expiry_date=expiry_date,
+                cost_price=cost_price,
+            )
+
+        # Update PO status if fully received
+        po = self.get_purchase_order(po_id)
+        total_ordered = sum(item["quantity_ordered"] for item in self.get_po_items(po_id))
+        total_received = sum(item["quantity_received"] for item in self.get_po_items(po_id))
+
+        if total_received >= total_ordered:
+            po_update_stmt = purchase_orders.update().where(purchase_orders.c.id == po_id).values(
+                status="received",
+                actual_delivery_date=date.today(),
+            )
+            self.session.execute(po_update_stmt)
+
+        self.session.commit()
+        return {
+            "receipt_id": receipt_id,
+            "total_received_value": float(total_received_value),
+        }
+
+    def get_purchase_order(self, po_id: int) -> Optional[dict]:
+        """Get purchase order by ID."""
+        stmt = select(purchase_orders).where(purchase_orders.c.id == po_id)
+        result = self.session.execute(stmt).fetchone()
+        return dict(result._mapping) if result else None
+
+    def get_po_items(self, po_id: int) -> List[dict]:
+        """Get all items in a purchase order."""
+        stmt = select(purchase_order_items).where(purchase_order_items.c.purchase_order_id == po_id)
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def get_purchase_orders_by_status(self, store_id: int, status: str = None) -> List[dict]:
+        """Get purchase orders by status with supplier names."""
+        from sqlalchemy import join
+
+        # Join purchase_orders with suppliers to get supplier names
+        stmt = select(
+            purchase_orders,
+            suppliers.c.name.label('supplier_name')
+        ).select_from(
+            join(purchase_orders, suppliers, purchase_orders.c.supplier_id == suppliers.c.id)
+        ).where(purchase_orders.c.store_id == store_id)
+
+        if status:
+            stmt = stmt.where(purchase_orders.c.status == status)
+
+        stmt = stmt.order_by(purchase_orders.c.created_at.desc())
+
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def _generate_po_number(self, store_id: int) -> str:
+        """Generate unique PO number."""
+        from datetime import datetime
+
+        stmt = select(func.count(purchase_orders.c.id)).where(purchase_orders.c.store_id == store_id)
+        count = self.session.execute(stmt).scalar() or 0
+        timestamp = datetime.now().strftime("%Y%m%d")
+        return f"PO-{store_id}-{timestamp}-{count + 1:04d}"
+
+
 # --- Session Factory ---------------------------------------------------------
 def get_session(db_path: Optional[str] = None) -> Session:
     """Get a database session."""
@@ -1016,5 +1288,7 @@ __all__ = [
     "InventoryService",
     "SalesService",
     "StockTransferService",
+    "SupplierService",
+    "PurchaseOrderService",
     "get_session",
 ]

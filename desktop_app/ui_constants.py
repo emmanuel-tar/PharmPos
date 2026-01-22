@@ -48,11 +48,11 @@ class Fonts:
     """Application font definitions."""
     TITLE = QFont("Segoe UI", 18, QFont.Bold)
     SUBTITLE = QFont("Segoe UI", 14, QFont.Bold)
-    BODY = QFont("Segoe UI", 10)
-    BODY_BOLD = QFont("Segoe UI", 10, QFont.Bold)
-    SMALL = QFont("Segoe UI", 9)
-    SMALL_BOLD = QFont("Segoe UI", 9, QFont.Bold)
-    MONOSPACE = QFont("Consolas", 10)
+    BODY = QFont("Segoe UI", 12)
+    BODY_BOLD = QFont("Segoe UI", 12, QFont.Bold)
+    SMALL = QFont("Segoe UI", 10)
+    SMALL_BOLD = QFont("Segoe UI", 10, QFont.Bold)
+    MONOSPACE = QFont("Consolas", 12)
 
 # Dimensions
 class Dimensions:

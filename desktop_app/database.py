@@ -352,18 +352,103 @@ suppliers = Table(
 )
 
 
+# purchase_orders
+purchase_orders = Table(
+    "purchase_orders",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("po_number", String, nullable=False, unique=True),
+    Column(
+        "supplier_id",
+        Integer,
+        ForeignKey("suppliers.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "store_id",
+        Integer,
+        ForeignKey("stores.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column("total_expected_amount", Numeric(10, 2), server_default=text("0")),
+    Column("status", String, server_default=text("'draft'"), nullable=False),  # 'draft', 'approved', 'ordered', 'received', 'cancelled'
+    Column("expected_delivery_date", Date),
+    Column("actual_delivery_date", Date),
+    Column("notes", Text),
+    Column("approved_by", Integer, ForeignKey("users.id", ondelete="SET NULL")),
+    Column("approved_at", DateTime),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+    # Sync columns
+    Column("sync_id", String, unique=True, nullable=True),
+    Column("sync_status", String, server_default=text("'pending'"), nullable=False),
+    Column("last_synced_at", DateTime, nullable=True),
+    Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
+)
+
+# purchase_order_items
+purchase_order_items = Table(
+    "purchase_order_items",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "purchase_order_id",
+        Integer,
+        ForeignKey("purchase_orders.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "product_id",
+        Integer,
+        ForeignKey("products.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column("quantity_ordered", Integer, nullable=False),
+    Column("quantity_received", Integer, server_default=text("0")),
+    Column("expected_cost_price", Numeric(10, 2)),
+    Column("notes", Text),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
 purchase_receipts = Table(
     "purchase_receipts",
     metadata,
     Column("id", Integer, primary_key=True),
     Column(
-        "supplier_id",
+        "purchase_order_id",
         Integer,
-        ForeignKey("suppliers.id", ondelete="SET NULL", onupdate="CASCADE"),
+        ForeignKey("purchase_orders.id", ondelete="SET NULL", onupdate="CASCADE"),
     ),
-    Column("store_id", Integer, ForeignKey("stores.id", ondelete="RESTRICT")),
-    Column("receipt_number", String, nullable=False, unique=True),
-    Column("total_amount", Numeric(10, 2), server_default=text("0")),
+    Column(
+        "product_id",
+        Integer,
+        ForeignKey("products.id", ondelete="RESTRICT", onupdate="CASCADE"),
+    ),
+    Column(
+        "batch_id",
+        Integer,
+        ForeignKey("product_batches.id", ondelete="RESTRICT", onupdate="CASCADE"),
+    ),
+    Column("received_quantity", Integer, server_default=text("0")),
+    Column("actual_cost_price", Numeric(10, 2)),
+    Column("received_date", DateTime, server_default=func.now()),
+    Column(
+        "received_by",
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+    ),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
     Column(
         "updated_at",
@@ -867,6 +952,8 @@ __all__ = [
     "stock_transfers",
     "inventory_audit",
     "suppliers",
+    "purchase_orders",
+    "purchase_order_items",
     "purchase_receipts",
     "purchase_receipt_items",
     "stock_reservations",
