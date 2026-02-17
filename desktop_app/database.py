@@ -137,6 +137,7 @@ products = Table(
     Column("sync_status", String, server_default=text("'pending'"), nullable=False),
     Column("last_synced_at", DateTime, nullable=True),
     Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
+    Column("image_path", String, nullable=True),
 )
 
 # product_batches (inventory per store/batch)

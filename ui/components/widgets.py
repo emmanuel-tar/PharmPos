@@ -6,10 +6,10 @@ Includes shadow effects to replace problematic CSS box-shadow.
 """
 
 from PyQt5.QtWidgets import (
-    QFrame, QVBoxLayout, QLabel, QGraphicsDropShadowEffect, QWidget, QHBoxLayout
+    QFrame, QVBoxLayout, QLabel, QGraphicsDropShadowEffect, QWidget, QHBoxLayout, QPushButton
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtGui import QColor, QPixmap, QIcon
 
 from ..styles.theme import Theme
 
@@ -78,3 +78,56 @@ class MetricCard(ERPCard):
         self.value_label.setText(value)
         if subtext:
             self.subtext_label.setText(subtext)
+
+class ProductCard(ERPCard):
+    """Premium product card for POS grid."""
+    clicked = pyqtSignal(dict) # Emits product data
+
+    def __init__(self, product_data, parent=None):
+        super().__init__(parent)
+        self.product_data = product_data
+        self.setFixedSize(160, 200)
+        self.setCursor(Qt.PointingHandCursor)
+        
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        self.set_layout(layout)
+
+        # Image Container
+        self.image_label = QLabel()
+        self.image_label.setFixedSize(140, 100)
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setStyleSheet(f"background: {Theme.SURFACE_LIGHT}; border-radius: 8px;")
+        
+        img_path = product_data.get('image_path')
+        if img_path and os.path.exists(img_path):
+            pixmap = QPixmap(img_path)
+            self.image_label.setPixmap(pixmap.scaled(140, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            # Fallback icon or text
+            self.image_label.setText("No Image")
+            self.image_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; background: {Theme.SURFACE_LIGHT}; border-radius: 8px; font-size: 10px;")
+            
+        layout.addWidget(self.image_label)
+
+        # Name
+        name_label = QLabel(product_data['name'])
+        name_label.setWordWrap(True)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setStyleSheet(f"color: {Theme.TEXT_MAIN}; font-weight: 600; font-size: 12px;")
+        layout.addWidget(name_label)
+
+        # Price
+        price = product_data.get('selling_price', 0)
+        price_label = QLabel(f"₦{float(price):,.2f}")
+        price_label.setAlignment(Qt.AlignCenter)
+        price_label.setStyleSheet(f"color: {Theme.PRIMARY}; font-weight: 800; font-size: 14px;")
+        layout.addWidget(price_label)
+        
+        layout.addStretch()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.product_data)
+        super().mousePressEvent(event)

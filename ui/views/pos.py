@@ -8,11 +8,12 @@ Supports both retail scanning and pharmaceutical batch selection.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QTableWidget, QHeaderView, QPushButton, QSpacerItem, QSizePolicy,
-    QFrame, QMessageBox, QTableWidgetItem, QInputDialog, QCompleter
+    QFrame, QMessageBox, QTableWidgetItem, QInputDialog, QCompleter,
+    QScrollArea, QGridLayout
 )
 from PyQt5.QtCore import Qt, QStringListModel
 
-from ..components.widgets import ERPCard
+from ..components.widgets import ERPCard, ProductCard
 from ..styles.theme import Theme
 from ..dialogs.batch_selection import BatchSelectionDialog
 from ..dialogs.suspended_sales import SuspendedSalesDialog
@@ -94,25 +95,27 @@ class POSView(QWidget):
         self.cat_layout.setContentsMargins(0, 0, 0, 0)
         left_side.addWidget(self.cat_scroll)
 
-        # Product Grid/Table Card
+        # Product Grid Area
+        # Product Grid Area
         catalog_card = ERPCard()
         catalog_layout = QVBoxLayout(catalog_card)
+        catalog_card.set_layout(catalog_layout)
         
-        catalog_header = QLabel("Product Catalog")
-        catalog_header.setStyleSheet(f"color: {Theme.TEXT_MAIN}; font-size: 16px; font-weight: 600;")
-        catalog_layout.addWidget(catalog_header)
+        # Scroll area for grid
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("background: transparent; border: none;")
         
-        self.catalog_table = QTableWidget()
-        self.catalog_table.setColumnCount(4)
-        self.catalog_table.setHorizontalHeaderLabels(["Product", "SKU", "Stock", "Price"])
-        self.catalog_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.catalog_table.setStyleSheet(f"border: none; background: transparent;")
-        self.catalog_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.catalog_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.catalog_table.doubleClicked.connect(self.add_selected_to_cart)
-        catalog_layout.addWidget(self.catalog_table)
+        self.grid_container = QWidget()
+        self.grid_container.setStyleSheet("background: transparent;")
+        self.grid_layout = QGridLayout(self.grid_container)
+        self.grid_layout.setSpacing(15)
+        self.grid_layout.setContentsMargins(10, 10, 10, 10)
         
-        left_side.addWidget(catalog_card)
+        self.scroll_area.setWidget(self.grid_container)
+        catalog_layout.addWidget(self.scroll_area)
+        
+        left_side.addWidget(catalog_card, stretch=1)
         layout.addLayout(left_side, stretch=3)
 
         # --- RIGHT SIDE: Cart & Checkout ---
@@ -319,7 +322,7 @@ class POSView(QWidget):
                     self.search_input.clear()
                     # If we don't have a category filter, we might want to clear the table
                     if not self.current_category:
-                        self.catalog_table.setRowCount(0)
+                        self.update_catalog([])
                         return
                     # If we DO have a category, keep showing the category items
                     search_term = "" # continue to show all in category
@@ -353,81 +356,31 @@ class POSView(QWidget):
             QMessageBox.warning(self, "No Stock", f"No available batches for {product_name} in this store.")
 
     def update_catalog(self, products):
-        """Populate the catalog table with search results."""
-        self.catalog_table.setRowCount(len(products))
-        for i, p in enumerate(products):
-            self.catalog_table.setItem(i, 0, QTableWidgetItem(p['name']))
-            self.catalog_table.setItem(i, 1, QTableWidgetItem(p['sku']))
-            
-            # Stock: Get aggregate stock for this product across all batches in this store
-            stock = 0
-            if self.inventory_service:
-                batches = self.inventory_service.get_store_inventory(self.store_id)
-                stock = sum(b['quantity'] for b in batches if b['product_id'] == p['id'])
-            
-            self.catalog_table.setItem(i, 2, QTableWidgetItem(str(stock)))
-            self.catalog_table.setItem(i, 3, QTableWidgetItem(f"₦{float(p.get('selling_price', 0)):,.2f}"))
-            
-            # Store product data for metadata access
-            self.catalog_table.item(i, 0).setData(Qt.UserRole, p)
+        """Populate the grid with product cards."""
+        # Clear existing
+        try:
+            while self.grid_layout.count():
+                item = self.grid_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+        except Exception as e:
+            print(f"Error clearing catalog: {e}")
 
-    def add_selected_to_cart(self):
-        """Add double-clicked product to cart using FEFO."""
-        selected_rows = self.catalog_table.selectionModel().selectedRows()
-        if not selected_rows or not self.inventory_service:
-            return
-            
-        product_data = self.catalog_table.item(selected_rows[0].row(), 0).data(Qt.UserRole)
-        if not product_data:
-            return
-            
-        product_id = product_data['id']
-        product_name = product_data['name']
+        # Populate grid
+        cols = 4 # Flexible responsive cols would be better but fixed for now
+        for i, product in enumerate(products):
+            try:
+                card = ProductCard(product)
+                card.clicked.connect(self.add_product_to_cart)
+                self.grid_layout.addWidget(card, i // cols, i % cols)
+            except Exception as e:
+                print(f"Error adding product card: {e}")
         
-        # Default to FEFO
-        batch = self.inventory_service.get_fefo_batch(product_id, self.store_id)
-        if batch:
-            self.add_batch_to_cart(batch, product_name)
-        else:
-            QMessageBox.warning(self, "No Stock", f"No available batches for {product_name} in this store.")
-
-    def open_batch_picker(self):
-        """Manually select a batch for the selected product."""
-        selected_rows = self.catalog_table.selectionModel().selectedRows()
-        if not selected_rows or not self.inventory_service:
-            return
-
-        product_data = self.catalog_table.item(selected_rows[0].row(), 0).data(Qt.UserRole)
-        if not product_data:
-            return
-            
-        product_id = product_data['id']
-        product_name = product_data['name']
-        
-        # Get all batches for this product
-        batches = self.inventory_service.get_store_inventory(self.store_id)
-        product_batches = [b for b in batches if b['product_id'] == product_id and b['quantity'] > 0]
-        
-        if not product_batches:
-            QMessageBox.warning(self, "No Stock", "No active batches found for this product.")
-            return
-
-        dialog = BatchSelectionDialog(product_name, product_batches, self)
-        if dialog.exec_():
-            batch = dialog.get_selected_batch()
-            if batch:
-                self.add_batch_to_cart(batch, product_name)
-
-    def contextMenuEvent(self, event):
-        """Right-click menu for manual batch selection."""
-        if self.catalog_table.underMouse():
-            from PyQt5.QtWidgets import QMenu
-            menu = QMenu(self)
-            manual_action = menu.addAction("Select Specific Batch...")
-            manual_action.triggered.connect(self.open_batch_picker)
-            menu.exec_(event.globalPos())
-
-    def add_batch_to_cart(self, batch_data, product_name):
+        if not products:
+            empty_lbl = QLabel("No products found.")
+            empty_lbl.setAlignment(Qt.AlignCenter)
+            self.grid_layout.addWidget(empty_lbl, 0, 0)
         """Add a specific batch to the cart."""
         # Check if already in cart
         for item in self.cart:
