@@ -199,7 +199,7 @@ class ProductFormDialog(QDialog):
                 border-radius: 6px;
             }}
             QPushButton:hover {{
-                background-color: {Theme.PRIMARY_DARK};
+                background-color: {Theme.PRIMARY_HOVER};
             }}
         """)
         self.save_btn.clicked.connect(self.handle_save)
