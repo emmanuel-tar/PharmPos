@@ -56,7 +56,7 @@ class Sidebar(QFrame):
         self.add_nav_item("Dashboard", "dashboard")
         self.add_nav_item("POS", "pos")
         self.add_nav_item("Products", "products")
-        self.add_nav_item("Inventory", "inventory")
+        self.add_nav_item("Procurement", "procurement")
         self.add_nav_item("Stock Transfers", "transfers")
         self.add_nav_item("Customers", "customers")
         self.add_nav_item("Reports", "reports")

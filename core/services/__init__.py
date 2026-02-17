@@ -11,9 +11,7 @@ from .inventory_service import InventoryService, StockTransferService
 from .analytics_service import AnalyticsService
 from .product_service import ProductService
 from .category_service import CategoryService
-from .report_service import ReportService
-from .store_service import StoreService
-from .user_service import UserService
+from .procurement_service import ProcurementService
 
 __all__ = [
     'BaseService',
@@ -25,6 +23,7 @@ __all__ = [
     'PaymentProcessor',
     'InventoryService',
     'StockTransferService',
+    'ProcurementService',
     'AnalyticsService',
     'ProductService',
     'CategoryService',

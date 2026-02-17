@@ -14,7 +14,7 @@ from .components.sidebar import Sidebar
 from .components.header import Header
 from .views.dashboard import DashboardView
 from .views.pos import POSView
-from .views.inventory import InventoryView
+from .views.procurement import ProcurementView
 from .views.product import ProductView
 from .views.customers import CustomersView
 from .views.reports import ReportsView
@@ -23,7 +23,7 @@ from .styles.stylesheets import Styles
 from core.services import (
     InventoryService, ProductService, SalesService, 
     AnalyticsService, ReportService, StockTransferService,
-    CategoryService
+    CategoryService, ProcurementService
 )
 from desktop_app.models import get_session
 
@@ -43,6 +43,7 @@ class MainAppWindow(QMainWindow):
         self.sales_service = SalesService(self.session)
         self.analytics_service = AnalyticsService(self.session)
         self.report_service = ReportService(self.session)
+        self.procurement_service = ProcurementService(self.session)
 
         self.setWindowTitle("PharmaPOS ERP")
         self.resize(1280, 800)
@@ -79,14 +80,14 @@ class MainAppWindow(QMainWindow):
         # Views
         self.dashboard_view = DashboardView(self.analytics_service)
         self.pos_view = POSView(self.sales_service, self.product_service, self.inventory_service, self.category_service)
-        self.inventory_view = InventoryView(self.inventory_service, self.transfer_service)
+        self.procurement_view = ProcurementView(self.inventory_service, self.procurement_service, self.transfer_service)
         self.product_view = ProductView(self.product_service, self.category_service, self.inventory_service, self.analytics_service)
         self.customers_view = CustomersView()
         self.reports_view = ReportsView(self.report_service)
         
         self.view_stack.addWidget(self.dashboard_view)
         self.view_stack.addWidget(self.pos_view)
-        self.view_stack.addWidget(self.inventory_view)
+        self.view_stack.addWidget(self.procurement_view)
         self.view_stack.addWidget(self.product_view)
         self.view_stack.addWidget(self.customers_view)
         self.view_stack.addWidget(self.reports_view)
@@ -108,7 +109,7 @@ class MainAppWindow(QMainWindow):
             "dashboard": 0,
             "pos": 1,
             "products": 3,
-            "inventory": 2,
+            "procurement": 2,
             "customers": 4,
             "reports": 5,
             # Placeholder for others
