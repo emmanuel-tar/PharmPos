@@ -1272,8 +1272,13 @@ class PurchaseOrderService:
         return dict(result._mapping) if result else None
 
     def get_po_items(self, po_id: int) -> List[dict]:
-        """Get all items in a purchase order."""
-        stmt = select(purchase_order_items).where(purchase_order_items.c.purchase_order_id == po_id)
+        """Get all items in a purchase order with product names."""
+        stmt = select(
+            purchase_order_items,
+            products.c.name.label("name")
+        ).select_from(
+            purchase_order_items.join(products, purchase_order_items.c.product_id == products.c.id)
+        ).where(purchase_order_items.c.purchase_order_id == po_id)
         results = self.session.execute(stmt).fetchall()
         return [dict(row._mapping) for row in results]
 

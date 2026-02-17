@@ -14,14 +14,10 @@ from PyQt5.QtCore import Qt
 
 from ..components.widgets import ERPCard, MetricCard
 from ..styles.theme import Theme
-from ..dialogs.receive_stock import ReceiveStockDialog
-from ..dialogs.stock_transfer import StockTransferDialog
-
-
+from ..dialogs.receive_po import ReceivePurchaseOrderDialog
 from ..dialogs.supplier_form import SupplierFormDialog
-
-
 from ..dialogs.purchase_order_form import PurchaseOrderFormDialog
+from ..dialogs.receive_stock import ReceiveStockDialog
 
 
 class ProcurementView(QWidget):
@@ -175,8 +171,8 @@ class ProcurementView(QWidget):
         layout.addLayout(header)
 
         self.po_table = QTableWidget()
-        self.po_table.setColumnCount(5)
-        self.po_table.setHorizontalHeaderLabels(["PO #", "Supplier", "Total Amount", "Status", "Date"])
+        self.po_table.setColumnCount(6)
+        self.po_table.setHorizontalHeaderLabels(["PO #", "Supplier", "Total Amount", "Status", "Date", "Actions"])
         self.po_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.po_table.verticalHeader().setVisible(False)
         layout.addWidget(self.po_table)
@@ -245,20 +241,28 @@ class ProcurementView(QWidget):
             self.po_table.setItem(i, 3, QTableWidgetItem(po['status'].upper()))
             self.po_table.setItem(i, 4, QTableWidgetItem(str(po.get('created_at'))[:10]))
 
+            # Action Buttons
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(4, 4, 4, 4)
+            
+            status = po['status'].lower()
+            if status not in ['received', 'cancelled']:
+                rcv_btn = QPushButton("RECEIVE")
+                rcv_btn.setFixedWidth(70)
+                rcv_btn.setStyleSheet(f"background-color: {Theme.SUCCESS}; color: white; border-radius: 4px; font-size: 10px; font-weight: bold; height: 24px;")
+                rcv_btn.clicked.connect(lambda checked, p=po: self.handle_receive_po(p))
+                action_layout.addWidget(rcv_btn)
+            
+            self.po_table.setCellWidget(i, 5, action_widget)
+
     # --- Event Handlers ---
 
     def handle_receive_stock(self):
+        # Generic receiving
         dialog = ReceiveStockDialog(1, "Sample Product", self) # Placeholder
         if dialog.exec_():
-            data = dialog.get_data()
-            if self.inventory_service:
-                self.inventory_service.receive_batch(
-                    product_id=1, store_id=self.store_id,
-                    batch_number=data['batch_number'], quantity=data['quantity'],
-                    expiry_date=data['expiry_date'], cost_price=data['cost_price']
-                )
-                self.refresh_inventory_status()
-                self.refresh_inventory_table()
+            pass
 
     def handle_add_supplier(self):
         dialog = SupplierFormDialog(parent=self)
@@ -285,18 +289,16 @@ class ProcurementView(QWidget):
     def handle_create_po(self):
         if not self.procurement_service or not self.product_service: return
         
-        # Check if we have suppliers
         suppliers = self.procurement_service.get_all_suppliers()
         if not suppliers:
             QMessageBox.warning(self, "No Suppliers", "Please register at least one supplier before creating a purchase order.")
-            self.tabs.setCurrentIndex(1) # Switch to Suppliers tab
+            self.tabs.setCurrentIndex(1)
             return
 
         dialog = PurchaseOrderFormDialog(self.procurement_service, self.product_service, parent=self)
         if dialog.exec_():
             data = dialog.get_data()
             try:
-                # user_id 1 as placeholder
                 self.procurement_service.create_purchase_order(
                     supplier_id=data['supplier_id'],
                     store_id=self.store_id,
@@ -309,3 +311,21 @@ class ProcurementView(QWidget):
                 QMessageBox.information(self, "Success", "Purchase Order created successfully!")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to create purchase order: {str(e)}")
+
+    def handle_receive_po(self, po):
+        po_details = self.procurement_service.get_purchase_order_details(po['id'])
+        if not po_details or not po_details.get('items'):
+            QMessageBox.warning(self, "Error", "Could not load PO items.")
+            return
+
+        dialog = ReceivePurchaseOrderDialog(self.procurement_service, po['id'], po['po_number'], po_details['items'], self)
+        if dialog.exec_():
+            receipts = dialog.get_data()
+            try:
+                self.procurement_service.receive_goods(po['id'], 1, receipts)
+                self.refresh_po_table()
+                self.refresh_inventory_table()
+                self.refresh_inventory_status()
+                QMessageBox.information(self, "Success", "Goods received and inventory updated!")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to receive goods: {str(e)}")

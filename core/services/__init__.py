@@ -12,6 +12,9 @@ from .analytics_service import AnalyticsService
 from .product_service import ProductService
 from .category_service import CategoryService
 from .procurement_service import ProcurementService
+from .report_service import ReportService
+from .store_service import StoreService
+from .user_service import UserService
 
 __all__ = [
     'BaseService',
