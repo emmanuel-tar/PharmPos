@@ -57,37 +57,26 @@ class CustomerSelectorDialog(QDialog):
         layout.addLayout(btns)
 
     def refresh_table(self):
-        # Local mock or service call
-        customers = []
+        if not self.customer_service: 
+            self.table.setRowCount(0)
+            return
+            
         try:
-            # Assuming a standard customer registry exists in database
-            from desktop_app.database import customers as cust_table
-            from sqlalchemy import select
-            
-            query = self.search_input.text().lower()
-            # This is a bit direct for UI, usually service layer would handle this
-            # session = ...
-            # customers = ...
-            
-            # Placeholder for now
-            customers = [
-                {'id': 1, 'name': 'Walk-in Customer', 'phone': '0000000000', 'email': 'none@pharmapos.ng'},
-                {'id': 2, 'name': 'John Doe', 'phone': '08012345678', 'email': 'john@example.com'},
-            ]
-            
+            query = self.search_input.text().strip()
             if query:
-                customers = [c for c in customers if query in c['name'].lower() or query in c['phone']]
+                customers = self.customer_service.search_customers(query)
+            else:
+                customers = self.customer_service.get_all_customers()
                 
-        except:
-            pass
-            
-        self.table.setRowCount(len(customers))
-        for i, c in enumerate(customers):
-            self.table.setItem(i, 0, QTableWidgetItem(c['name']))
-            self.table.setItem(i, 1, QTableWidgetItem(c['phone']))
-            self.table.setItem(i, 2, QTableWidgetItem(c.get('email', 'N/A')))
-            # Store data
-            self.table.item(i, 0).setData(Qt.UserRole, c)
+            self.table.setRowCount(len(customers))
+            for i, c in enumerate(customers):
+                self.table.setItem(i, 0, QTableWidgetItem(c['name']))
+                self.table.setItem(i, 1, QTableWidgetItem(c['phone']))
+                self.table.setItem(i, 2, QTableWidgetItem(c.get('email', 'N/A')))
+                self.table.item(i, 0).setData(Qt.UserRole, c)
+        except Exception as e:
+            print(f"Customer refresh error: {e}")
+            self.table.setRowCount(0)
 
     def handle_select(self):
         row = self.table.currentRow()
