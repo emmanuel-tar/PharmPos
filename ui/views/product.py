@@ -20,11 +20,12 @@ from ..dialogs.item_history import ItemHistoryDialog
 
 class ProductView(QWidget):
     """Modern product catalog management interface."""
-    def __init__(self, product_service, category_service, inventory_service, parent=None):
+    def __init__(self, product_service, category_service, inventory_service, analytics_service=None, parent=None):
         super().__init__(parent)
         self.product_service = product_service
         self.category_service = category_service
         self.inventory_service = inventory_service
+        self.analytics_service = analytics_service
         self.setup_ui()
         self.refresh_table()
 
@@ -194,7 +195,7 @@ class ProductView(QWidget):
             self.handle_archive_product(product)
 
     def handle_add_product(self):
-        dialog = ProductFormDialog(self.category_service, parent=self)
+        dialog = ProductFormDialog(self.category_service, analytics_service=self.analytics_service, parent=self)
         if dialog.exec_():
             data = dialog.get_data()
             try:
@@ -204,7 +205,7 @@ class ProductView(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to create product: {str(e)}")
 
     def handle_edit_product(self, product):
-        dialog = ProductFormDialog(self.category_service, product_data=product, parent=self)
+        dialog = ProductFormDialog(self.category_service, product_data=product, analytics_service=self.analytics_service, parent=self)
         if dialog.exec_():
             data = dialog.get_data()
             try:

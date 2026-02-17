@@ -12,12 +12,13 @@ from decimal import Decimal
 from ..styles.theme import Theme
 
 class ProductFormDialog(QDialog):
-    def __init__(self, category_service, product_data=None, parent=None):
+    def __init__(self, category_service, product_data=None, analytics_service=None, parent=None):
         super().__init__(parent)
         self.category_service = category_service
+        self.analytics_service = analytics_service
         self.product_data = product_data # None for Create mode
         self.setWindowTitle("Product Details")
-        self.resize(600, 700)
+        self.resize(620, 750)
         self.setup_ui()
         self.load_categories()
         if self.product_data:
@@ -26,12 +27,29 @@ class ProductFormDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(20)
+        layout.setSpacing(16)
 
+        # Header with Alert Badge
+        header_layout = QHBoxLayout()
         title_text = "Edit Product" if self.product_data else "Create New Product"
         title = QLabel(title_text)
         title.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {Theme.TEXT_MAIN};")
-        layout.addWidget(title)
+        header_layout.addWidget(title)
+        
+        header_layout.addStretch()
+        
+        self.alert_badge = QLabel("NEEDS REORDER")
+        self.alert_badge.setVisible(False)
+        self.alert_badge.setStyleSheet(f"""
+            background-color: {Theme.DANGER};
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        """)
+        header_layout.addWidget(self.alert_badge)
+        layout.addLayout(header_layout)
 
         self.tabs = QTabWidget()
         
@@ -121,6 +139,50 @@ class ProductFormDialog(QDialog):
 
         self.tabs.addTab(self.stock_tab, "Stock Control")
 
+        # Tab 4: Forecast & Trends
+        self.forecast_tab = QWidget()
+        forecast_layout = QVBoxLayout(self.forecast_tab)
+        forecast_layout.setSpacing(10)
+        
+        if self.product_data:
+            stats_container = QWidget()
+            stats_layout = QFormLayout(stats_container)
+            
+            self.avg_sales_label = QLabel("Loading...")
+            self.stock_longevity_label = QLabel("Loading...")
+            self.stockout_date_label = QLabel("Loading...")
+            self.total_sold_label = QLabel("Loading...")
+            
+            stats_layout.addRow("Avg Daily Sales (30d):", self.avg_sales_label)
+            stats_layout.addRow("Total Sold (30d):", self.total_sold_label)
+            stats_layout.addRow("Estimated Longevity:", self.stock_longevity_label)
+            stats_layout.addRow("Forecasted Stock-out:", self.stockout_date_label)
+            
+            forecast_layout.addWidget(stats_container)
+            
+            tips_card = QWidget()
+            tips_card.setStyleSheet(f"background-color: {Theme.INFO_LIGHT}; border-radius: 8px; padding: 12px;")
+            tips_layout = QVBoxLayout(tips_card)
+            tips_header = QLabel("Forecasting Insight")
+            tips_header.setStyleSheet(f"font-weight: bold; color: {Theme.INFO};")
+            self.insight_text = QLabel("Historical data is being used to predict your replenishment needs.")
+            self.insight_text.setWordWrap(True)
+            self.insight_text.setStyleSheet(f"font-size: 11px; color: {Theme.TEXT_MAIN};")
+            
+            tips_layout.addWidget(tips_header)
+            tips_layout.addWidget(self.insight_text)
+            forecast_layout.addWidget(tips_card)
+        else:
+            no_data = QLabel("Insights will be available once the product is created and has sales history.")
+            no_data.setWordWrap(True)
+            no_data.setAlignment(Qt.AlignCenter)
+            no_data.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-style: italic;")
+            forecast_layout.addStretch()
+            forecast_layout.addWidget(no_data)
+            forecast_layout.addStretch()
+
+        self.tabs.addTab(self.forecast_tab, "Forecast & Trends")
+
         layout.addWidget(self.tabs)
 
         # Bottom Actions
@@ -129,11 +191,16 @@ class ProductFormDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         self.save_btn = QPushButton("SAVE PRODUCT")
         self.save_btn.setStyleSheet(f"""
-            background-color: {Theme.PRIMARY};
-            color: white;
-            font-weight: bold;
-            padding: 12px 24px;
-            border-radius: 6px;
+            QPushButton {{
+                background-color: {Theme.PRIMARY};
+                color: white;
+                font-weight: bold;
+                padding: 12px 24px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {Theme.PRIMARY_DARK};
+            }}
         """)
         self.save_btn.clicked.connect(self.handle_save)
         
@@ -172,7 +239,24 @@ class ProductFormDialog(QDialog):
         
         self.min_stock_spin.setValue(p.get('min_stock', 0))
         self.max_stock_spin.setValue(p.get('max_stock', 9999))
-        self.reorder_spin.setValue(p.get('reorder_level', 0) or 0)
+        self.reorder_level = p.get('reorder_level', 0) or 0
+        self.reorder_spin.setValue(self.reorder_level)
+        
+        # Update Forecast
+        if self.analytics_service and p.get('id'):
+            forecast = self.analytics_service.get_product_forecast(p['id'])
+            self.avg_sales_label.setText(f"{forecast['avg_daily_sales']} units / day")
+            self.total_sold_label.setText(f"{forecast['total_sold_period']} units")
+            self.stock_longevity_label.setText(forecast['days_remaining'])
+            self.stockout_date_label.setText(forecast['forecast_stockout_date'])
+            
+            # Smart Badge & Insight
+            total_stock = forecast['current_stock']
+            if total_stock <= self.reorder_level:
+                self.alert_badge.setVisible(True)
+                self.insight_text.setText("Warning: Stock is below reorder level. Replenish soon to avoid stockouts.")
+            elif forecast['avg_daily_sales'] > 0 and total_stock / forecast['avg_daily_sales'] < 7:
+                 self.insight_text.setText("Critical: Item is selling fast! Predicted stockout in less than 7 days.")
 
     def get_data(self) -> dict:
         return {

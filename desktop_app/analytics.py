@@ -470,6 +470,78 @@ class DashboardAnalytics:
                 'period_days': days
             }
     
+    def get_product_forecast(self, product_id: int, days: int = 30) -> Dict[str, Any]:
+        """Calculate sales velocity and stock longevity for a specific product.
+        
+        Args:
+            product_id: ID of the product to analyze
+            days: Lookback period for sales velocity
+            
+        Returns:
+            Dictionary with forecasting metrics
+        """
+        try:
+            from desktop_app.database import sale_items, product_batches
+            
+            start_date = date.today() - timedelta(days=days)
+            
+            # 1. Calculate Sales Velocity (Avg units sold per day)
+            sales_stmt = select(
+                func.sum(sale_items.c.quantity).label('total_sold')
+            ).select_from(
+                sale_items.join(product_batches, sale_items.c.product_batch_id == product_batches.c.id)
+            ).where(
+                and_(
+                    product_batches.c.product_id == product_id,
+                    func.date(sale_items.c.created_at) >= start_date
+                )
+            )
+            
+            total_sold = self.session.execute(sales_stmt).scalar() or 0
+            avg_daily_sales = float(total_sold) / days if days > 0 else 0
+            
+            # 2. Get Current Total Stock
+            stock_stmt = select(
+                func.sum(product_batches.c.quantity).label('total_stock')
+            ).where(
+                and_(
+                    product_batches.c.product_id == product_id,
+                    product_batches.c.quantity > 0
+                )
+            )
+            
+            total_stock = self.session.execute(stock_stmt).scalar() or 0
+            
+            # 3. Calculate longevity
+            days_remaining = (total_stock / avg_daily_sales) if avg_daily_sales > 0 else float('inf')
+            
+            # Cap infinity/large numbers for UI
+            if days_remaining > 999:
+                days_remaining_display = "> 1 Year"
+                forecast_date = "N/A"
+            else:
+                days_remaining_display = f"{int(days_remaining)} Days"
+                forecast_date = (date.today() + timedelta(days=int(days_remaining))).isoformat()
+
+            return {
+                'product_id': product_id,
+                'total_sold_period': total_sold,
+                'avg_daily_sales': round(avg_daily_sales, 2),
+                'current_stock': total_stock,
+                'days_remaining': days_remaining_display,
+                'forecast_stockout_date': forecast_date,
+                'lookback_days': days
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting product forecast: {e}", exc_info=True)
+            return {
+                'product_id': product_id,
+                'avg_daily_sales': 0.0,
+                'days_remaining': 'Unknown',
+                'forecast_stockout_date': 'Unknown'
+            }
+
     def get_dashboard_summary(self, store_id: Optional[int] = None) -> Dict[str, Any]:
         """Get complete dashboard summary with all metrics.
         

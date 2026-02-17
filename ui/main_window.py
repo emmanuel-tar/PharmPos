@@ -80,7 +80,7 @@ class MainAppWindow(QMainWindow):
         self.dashboard_view = DashboardView(self.analytics_service)
         self.pos_view = POSView(self.sales_service, self.product_service, self.inventory_service, self.category_service)
         self.inventory_view = InventoryView(self.inventory_service, self.transfer_service)
-        self.product_view = ProductView(self.product_service, self.category_service, self.inventory_service)
+        self.product_view = ProductView(self.product_service, self.category_service, self.inventory_service, self.analytics_service)
         self.customers_view = CustomersView()
         self.reports_view = ReportsView(self.report_service)
         

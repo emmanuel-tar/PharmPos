@@ -162,6 +162,15 @@ class AnalyticsService(BaseService):
         analytics = DashboardAnalytics(self.session)
         return analytics.get_profit_analysis(store_id, days)
 
+    def get_product_forecast(self, product_id: int, days: int = 30) -> Dict[str, Any]:
+        """
+        Get forecasting metrics for a specific product.
+        """
+        from desktop_app.analytics import DashboardAnalytics
+        
+        analytics = DashboardAnalytics(self.session)
+        return analytics.get_product_forecast(product_id, days)
+
     def get_dashboard_summary(self, store_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Get complete dashboard summary with all metrics.
