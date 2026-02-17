@@ -561,6 +561,6 @@ class POSView(QWidget):
             self.customer_btn.setStyleSheet(f"color: {Theme.PRIMARY}; font-weight: bold; font-size: 12px; border: 1px solid {Theme.PRIMARY}; padding: 4px 8px; border-radius: 4px;")
             self.update_cart_display()
             self.search_input.clear()
-            self.catalog_table.setRowCount(0)
+            self.update_catalog([])
             QMessageBox.information(self, "Success", "Transaction finalized and bill closed.")
 
