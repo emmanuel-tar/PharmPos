@@ -238,12 +238,14 @@ class ProductService:
         result = self.session.execute(stmt).fetchone()
         return dict(result._mapping) if result else None
 
-    def get_all_products(self, active_only: bool = True) -> List[dict]:
-        """Get all products."""
+    def get_all_products(self, active_only: bool = True, category: str = None) -> List[dict]:
+        """Get all products, optionally filtered by category."""
+        stmt = select(products)
         if active_only:
-            stmt = select(products).where(products.c.is_active == True)
-        else:
-            stmt = select(products)
+            stmt = stmt.where(products.c.is_active == True)
+        if category:
+            stmt = stmt.where(products.c.category == category)
+        
         results = self.session.execute(stmt).fetchall()
         return [dict(row._mapping) for row in results]
 
@@ -255,7 +257,7 @@ class ProductService:
         return True
 
     def deactivate_product(self, product_id: int) -> bool:
-        """Deactivate a product."""
+        """Deactivate a product (soft delete)."""
         return self.update_product(product_id, is_active=False)
 
 
@@ -822,6 +824,33 @@ class InventoryService:
             "quantity": quantity,
             "status": "pending",
         }
+
+
+    def get_batch_history(self, batch_id: int) -> List[dict]:
+        """Get the audit history for a specific batch."""
+        from desktop_app.database import inventory_audit
+        stmt = (
+            select(inventory_audit)
+            .where(inventory_audit.c.product_batch_id == batch_id)
+            .order_by(inventory_audit.c.created_at.desc())
+        )
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def get_product_history(self, product_id: int, store_id: Optional[int] = None) -> List[dict]:
+        """Get the movement history of a product across all its batches (optionally filtered by store)."""
+        from desktop_app.database import inventory_audit, product_batches
+        stmt = (
+            select(inventory_audit, product_batches.c.batch_number)
+            .join(product_batches, inventory_audit.c.product_batch_id == product_batches.c.id)
+            .where(product_batches.c.product_id == product_id)
+        )
+        if store_id:
+            stmt = stmt.where(product_batches.c.store_id == store_id)
+            
+        stmt = stmt.order_by(inventory_audit.c.created_at.desc())
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
 
 
 # --- Sales Service -----------------------------------------------------------
