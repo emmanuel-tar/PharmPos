@@ -142,8 +142,10 @@ class ProductView(QWidget):
             self.product_table.setItem(i, 0, QTableWidgetItem(p['name']))
             self.product_table.setItem(i, 1, QTableWidgetItem(p['sku']))
             self.product_table.setItem(i, 2, QTableWidgetItem(p.get('category', 'Uncategorized')))
-            self.product_table.setItem(i, 3, QTableWidgetItem(f"₦{p.get('retail_price', p.get('selling_price', 0)):,.2f}"))
-            self.product_table.setItem(i, 4, QTableWidgetItem(f"₦{p.get('wholesale_price', 0):,.2f}"))
+            retail_price = p.get('retail_price') or p.get('selling_price') or 0
+            wholesale_price = p.get('wholesale_price') or 0
+            self.product_table.setItem(i, 3, QTableWidgetItem(f"₦{float(retail_price):,.2f}"))
+            self.product_table.setItem(i, 4, QTableWidgetItem(f"₦{float(wholesale_price):,.2f}"))
             
             # Action Buttons cell
             btn_widget = QWidget()

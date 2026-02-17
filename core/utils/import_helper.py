@@ -1,10 +1,5 @@
-"""
-PharmaPOS ERP - Import/Export Helper
-"""
-
 import csv
-import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Optional
 from decimal import Decimal
 
 class ImportExportHelper:
@@ -22,9 +17,13 @@ class ImportExportHelper:
 
     @staticmethod
     def export_to_excel(data: List[dict], file_path: str):
-        """Export list of dictionaries to Excel."""
-        df = pd.DataFrame(data)
-        df.to_excel(file_path, index=False)
+        """Export list of dictionaries to Excel (Requires pandas and openpyxl)."""
+        try:
+            import pandas as pd
+            df = pd.DataFrame(data)
+            df.to_excel(file_path, index=False)
+        except ImportError:
+            raise ImportError("Excel export requires 'pandas' and 'openpyxl'. Please install them using 'pip install pandas openpyxl'.")
 
     @staticmethod
     def parse_csv(file_path: str) -> List[dict]:
@@ -38,8 +37,12 @@ class ImportExportHelper:
 
     @staticmethod
     def parse_excel(file_path: str) -> List[dict]:
-        """Parse Excel file into list of dictionaries."""
-        df = pd.read_excel(file_path)
-        # Convert NaN to None or empty string
-        df = df.where(pd.notnull(df), None)
-        return df.to_dict('records')
+        """Parse Excel file into list of dictionaries (Requires pandas and openpyxl)."""
+        try:
+            import pandas as pd
+            df = pd.read_excel(file_path)
+            # Convert NaN to None or empty string
+            df = df.where(pd.notnull(df), None)
+            return df.to_dict('records')
+        except ImportError:
+            raise ImportError("Excel import requires 'pandas' and 'openpyxl'. Please install them using 'pip install pandas openpyxl'.")

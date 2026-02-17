@@ -164,13 +164,13 @@ class InventoryView(QWidget):
             self.inventory_table.setItem(i, 0, QTableWidgetItem(b.get('product_name', 'Unknown')))
             self.inventory_table.setItem(i, 1, QTableWidgetItem(b.get('batch_number', 'N/A')))
             self.inventory_table.setItem(i, 2, QTableWidgetItem(str(b.get('expiry_date', 'N/A'))))
-            self.inventory_table.setItem(i, 3, QTableWidgetItem(str(b.get('quantity', 0))))
-            self.inventory_table.setItem(i, 4, QTableWidgetItem(b.get('warehouse_location', 'N/A')))
-            self.inventory_table.setItem(i, 5, QTableWidgetItem(f"₦{b.get('cost_price', 0):,.2f}"))
-            
-            qty = b.get('quantity', 0)
-            cost = b.get('cost_price', 0)
+            qty = b.get('quantity') or 0
+            cost = b.get('cost_price') or 0
             value = float(qty) * float(cost)
+            
+            self.inventory_table.setItem(i, 3, QTableWidgetItem(str(qty)))
+            self.inventory_table.setItem(i, 4, QTableWidgetItem(b.get('warehouse_location', 'N/A')))
+            self.inventory_table.setItem(i, 5, QTableWidgetItem(f"₦{float(cost):,.2f}"))
             self.inventory_table.setItem(i, 6, QTableWidgetItem(f"₦{value:,.2f}"))
             
             # Color coding for low stock or expiring
