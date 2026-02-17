@@ -1273,6 +1273,59 @@ class PurchaseOrderService:
         return f"PO-{store_id}-{timestamp}-{count + 1:04d}"
 
 
+# --- Category Service --------------------------------------------------------
+class CategoryService:
+    """Service for managing product categories."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def create_category(self, name: str, description: str = "") -> dict:
+        """Create a new category."""
+        from desktop_app.database import product_categories
+        stmt = product_categories.insert().values(
+            name=name,
+            description=description,
+        )
+        result = self.session.execute(stmt)
+        self.session.commit()
+        return {
+            "id": result.inserted_primary_key[0],
+            "name": name,
+            "description": description,
+        }
+
+    def get_category(self, category_id: int) -> Optional[dict]:
+        """Get category by ID."""
+        from desktop_app.database import product_categories
+        stmt = select(product_categories).where(product_categories.c.id == category_id)
+        result = self.session.execute(stmt).fetchone()
+        return dict(result._mapping) if result else None
+
+    def get_all_categories(self) -> List[dict]:
+        """Get all categories."""
+        from desktop_app.database import product_categories
+        stmt = select(product_categories).order_by(product_categories.c.name)
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def update_category(self, category_id: int, **kwargs) -> bool:
+        """Update category details."""
+        from desktop_app.database import product_categories
+        stmt = product_categories.update().where(product_categories.c.id == category_id).values(**kwargs)
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+    def delete_category(self, category_id: int) -> bool:
+        """Delete category."""
+        from desktop_app.database import product_categories
+        stmt = product_categories.delete().where(product_categories.c.id == category_id)
+        self.session.execute(stmt)
+        self.session.commit()
+        return True
+
+
 # --- Session Factory ---------------------------------------------------------
 def get_session(db_path: Optional[str] = None) -> Session:
     """Get a database session."""
@@ -1290,5 +1343,6 @@ __all__ = [
     "StockTransferService",
     "SupplierService",
     "PurchaseOrderService",
+    "CategoryService",
     "get_session",
 ]

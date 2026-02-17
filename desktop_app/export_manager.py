@@ -158,7 +158,8 @@ class ExportManager:
                     try:
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
-                    except:
+                    except (TypeError, AttributeError):
+                        # Handle None values or cells without value attribute
                         pass
                 
                 adjusted_width = min(max_length + 2, 50)

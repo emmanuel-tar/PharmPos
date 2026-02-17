@@ -1848,3 +1848,30 @@ class MainWindow(QMainWindow):
             is_valid, errors = exporter.validate_file(filepath, file_format)
             
             if not is_valid:
+                error_msg = "File validation failed:\n\n" + "\n".join(errors[:10])
+                if len(errors) > 10:
+                    error_msg += f"\n\n... and {len(errors) - 10} more errors"
+                show_error(self, error_msg)
+                return
+
+            # Import products
+            if file_format == "csv":
+                imported_count, import_errors = exporter.import_from_csv(filepath, update_existing=False)
+            else:
+                imported_count, import_errors = exporter.import_from_json(filepath, update_existing=False)
+
+            if import_errors:
+                error_msg = f"Imported {imported_count} products with {len(import_errors)} errors:\n\n"
+                error_msg += "\n".join(import_errors[:10])
+                if len(import_errors) > 10:
+                    error_msg += f"\n\n... and {len(import_errors) - 10} more errors"
+                show_message(self, "Import Complete with Errors", error_msg)
+            else:
+                show_success(self, f"Successfully imported {imported_count} products!")
+            
+            # Refresh products table
+            self.load_products_table()
+
+        except Exception as e:
+            show_error(self, f"Failed to import products: {str(e)}")
+

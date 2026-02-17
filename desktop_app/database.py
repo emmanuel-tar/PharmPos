@@ -613,6 +613,16 @@ customers = Table(
     Column("is_deleted", Boolean, server_default=text("0"), nullable=False),
 )
 
+# product_categories
+product_categories = Table(
+    "product_categories",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String, nullable=False, unique=True),
+    Column("description", Text),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+)
+
 Index("idx_customers_phone", customers.c.phone)
 Index("idx_customers_name", customers.c.name)
 
@@ -966,4 +976,5 @@ __all__ = [
     "compliance_alerts",
     "sync_logs",
     "customers",
+    "product_categories",
 ]
