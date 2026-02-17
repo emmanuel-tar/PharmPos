@@ -1050,12 +1050,14 @@ class SupplierService:
     def create_supplier(
         self,
         name: str,
+        phone: str = "",
         contact: str = "",
         address: str = "",
     ) -> dict:
         """Create a new supplier."""
         stmt = suppliers.insert().values(
             name=name,
+            phone=phone,
             contact=contact,
             address=address,
             sync_id=str(uuid.uuid4()),
@@ -1065,6 +1067,7 @@ class SupplierService:
         return {
             "id": result.inserted_primary_key[0],
             "name": name,
+            "phone": phone,
             "contact": contact,
             "address": address,
         }
@@ -1112,6 +1115,7 @@ class PurchaseOrderService:
         items: List[dict],  # [{product_id, quantity_ordered, expected_cost_price, notes}]
         expected_delivery_date: Optional[date] = None,
         notes: str = "",
+        status: str = "draft",
     ) -> dict:
         """Create a new purchase order with items."""
         # Calculate total expected amount
@@ -1130,7 +1134,7 @@ class PurchaseOrderService:
             store_id=store_id,
             user_id=user_id,
             total_expected_amount=total_expected,
-            status="draft",
+            status=status,
             expected_delivery_date=expected_delivery_date,
             notes=notes,
             sync_id=str(uuid.uuid4()),
@@ -1196,8 +1200,12 @@ class PurchaseOrderService:
         receipts: List[dict],  # [{product_id, batch_number, expiry_date, received_quantity, actual_cost_price}]
     ) -> dict:
         """Receive goods against a purchase order."""
+        store_id = self.get_purchase_order(po_id)["store_id"]
+        receipt_number = self._generate_receipt_number(store_id)
+        
         # Create receipt record
         receipt_stmt = purchase_receipts.insert().values(
+            receipt_number=receipt_number,
             purchase_order_id=po_id,
             received_by=user_id,
             sync_id=str(uuid.uuid4()),
@@ -1310,6 +1318,15 @@ class PurchaseOrderService:
         count = self.session.execute(stmt).scalar() or 0
         timestamp = datetime.now().strftime("%Y%m%d")
         return f"PO-{store_id}-{timestamp}-{count + 1:04d}"
+
+    def _generate_receipt_number(self, store_id: int) -> str:
+        """Generate unique purchase receipt number."""
+        from datetime import datetime
+
+        stmt = select(func.count(purchase_receipts.c.id))
+        count = self.session.execute(stmt).scalar() or 0
+        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+        return f"GRN-{store_id}-{timestamp}-{count + 1:04d}"
 
 
 # --- Category Service --------------------------------------------------------

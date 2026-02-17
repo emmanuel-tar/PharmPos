@@ -40,9 +40,13 @@ class SupplierFormDialog(QDialog):
         self.name_input.setPlaceholderText("Supplier / Company Name")
         form_container.addRow("Company Name:", self.name_input)
 
+        self.phone_input = QLineEdit()
+        self.phone_input.setPlaceholderText("e.g. +234 800 000 0000")
+        form_container.addRow("Phone Number:", self.phone_input)
+
         self.contact_input = QLineEdit()
-        self.contact_input.setPlaceholderText("Phone or Email")
-        form_container.addRow("Contact Info:", self.contact_input)
+        self.contact_input.setPlaceholderText("Email or Alternative Contact")
+        form_container.addRow("Other Contact:", self.contact_input)
 
         self.address_input = QTextEdit()
         self.address_input.setPlaceholderText("Physical Address")
@@ -79,6 +83,7 @@ class SupplierFormDialog(QDialog):
     def populate_data(self):
         s = self.supplier_data
         self.name_input.setText(s.get('name', ''))
+        self.phone_input.setText(s.get('phone', ''))
         self.contact_input.setText(s.get('contact', ''))
         self.address_input.setPlainText(s.get('address', ''))
 
@@ -91,6 +96,7 @@ class SupplierFormDialog(QDialog):
     def get_data(self):
         return {
             "name": self.name_input.text().strip(),
+            "phone": self.phone_input.text().strip(),
             "contact": self.contact_input.text().strip(),
             "address": self.address_input.toPlainText().strip()
         }

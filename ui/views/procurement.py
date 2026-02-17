@@ -147,8 +147,8 @@ class ProcurementView(QWidget):
         layout.addLayout(header)
 
         self.suppliers_table = QTableWidget()
-        self.suppliers_table.setColumnCount(4)
-        self.suppliers_table.setHorizontalHeaderLabels(["Name", "Contact info", "Address", "Actions"])
+        self.suppliers_table.setColumnCount(5)
+        self.suppliers_table.setHorizontalHeaderLabels(["Name", "Phone", "Other Contact", "Address", "Actions"])
         self.suppliers_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.suppliers_table.verticalHeader().setVisible(False)
         layout.addWidget(self.suppliers_table)
@@ -214,8 +214,9 @@ class ProcurementView(QWidget):
         self.suppliers_table.setRowCount(len(suppliers_list))
         for i, s in enumerate(suppliers_list):
             self.suppliers_table.setItem(i, 0, QTableWidgetItem(s['name']))
-            self.suppliers_table.setItem(i, 1, QTableWidgetItem(s.get('contact', '')))
-            self.suppliers_table.setItem(i, 2, QTableWidgetItem(s.get('address', '')))
+            self.suppliers_table.setItem(i, 1, QTableWidgetItem(s.get('phone', '')))
+            self.suppliers_table.setItem(i, 2, QTableWidgetItem(s.get('contact', '')))
+            self.suppliers_table.setItem(i, 3, QTableWidgetItem(s.get('address', '')))
             
             # Action Buttons
             action_widget = QWidget()
@@ -228,7 +229,7 @@ class ProcurementView(QWidget):
             edit_btn.clicked.connect(lambda checked, sup=s: self.handle_edit_supplier(sup))
             action_layout.addWidget(edit_btn)
             
-            self.suppliers_table.setCellWidget(i, 3, action_widget)
+            self.suppliers_table.setCellWidget(i, 4, action_widget)
 
     def refresh_po_table(self):
         if not self.procurement_service: return
@@ -299,16 +300,23 @@ class ProcurementView(QWidget):
         if dialog.exec_():
             data = dialog.get_data()
             try:
-                self.procurement_service.create_purchase_order(
+                status = data.get('status', 'draft')
+                po_result = self.procurement_service.create_purchase_order(
                     supplier_id=data['supplier_id'],
                     store_id=self.store_id,
                     user_id=1,
                     items=data['items'],
                     expected_delivery_date=data['expected_delivery_date'],
-                    notes=data['notes']
+                    notes=data['notes'],
+                    status=status
                 )
                 self.refresh_po_table()
-                QMessageBox.information(self, "Success", "Purchase Order created successfully!")
+                
+                if status == 'received':
+                    # Automatically trigger reception dialog
+                    self.handle_receive_po(po_result)
+                else:
+                    QMessageBox.information(self, "Success", f"Purchase Order {po_result['po_number']} created as {status.upper()}!")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to create purchase order: {str(e)}")
 

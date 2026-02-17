@@ -22,10 +22,10 @@ class ProcurementService(BaseService):
 
     # --- Supplier Management ---
     
-    def create_supplier(self, name: str, contact: str = "", address: str = "") -> Dict[str, Any]:
+    def create_supplier(self, name: str, phone: str = "", contact: str = "", address: str = "") -> Dict[str, Any]:
         from desktop_app.models import SupplierService
         service = SupplierService(self.session)
-        return service.create_supplier(name, contact, address)
+        return service.create_supplier(name, phone, contact, address)
 
     def get_supplier(self, supplier_id: int) -> Optional[Dict[str, Any]]:
         from desktop_app.models import SupplierService
@@ -57,11 +57,12 @@ class ProcurementService(BaseService):
         items: List[Dict[str, Any]],
         expected_delivery_date: Optional[date] = None,
         notes: str = "",
+        status: str = "draft",
     ) -> Dict[str, Any]:
         from desktop_app.models import PurchaseOrderService
         service = PurchaseOrderService(self.session)
         return service.create_purchase_order(
-            supplier_id, store_id, user_id, items, expected_delivery_date, notes
+            supplier_id, store_id, user_id, items, expected_delivery_date, notes, status
         )
 
     def get_purchase_orders(self, store_id: int, status: str = None) -> List[Dict[str, Any]]:

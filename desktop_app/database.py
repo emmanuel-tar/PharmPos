@@ -335,6 +335,7 @@ suppliers = Table(
     metadata,
     Column("id", Integer, primary_key=True),
     Column("name", String, nullable=False),
+    Column("phone", String),
     Column("contact", String),
     Column("address", Text),
     Column("created_at", DateTime, server_default=func.now(), nullable=False),
@@ -427,6 +428,7 @@ purchase_receipts = Table(
     "purchase_receipts",
     metadata,
     Column("id", Integer, primary_key=True),
+    Column("receipt_number", String, nullable=False, unique=True),
     Column(
         "purchase_order_id",
         Integer,
