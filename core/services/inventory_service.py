@@ -169,6 +169,13 @@ class InventoryService(BaseService):
         inventory_service = ModelInventoryService(self.session)
         return inventory_service.get_product_history(product_id, store_id)
 
+    def get_batches_by_store(self, store_id: int) -> List[dict]:
+        """Get all active batches for a store with product details."""
+        from desktop_app.models import InventoryService as ModelInventoryService
+        
+        inventory_service = ModelInventoryService(self.session)
+        return inventory_service.get_store_inventory(store_id)
+
 
 # --- Stock Transfer Service --------------------------------------------------
 class StockTransferService(BaseService):
