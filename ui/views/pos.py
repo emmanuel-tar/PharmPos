@@ -18,11 +18,12 @@ from ..dialogs.batch_selection import BatchSelectionDialog
 
 class POSView(QWidget):
     """Versatile POS interface."""
-    def __init__(self, sales_service=None, product_service=None, inventory_service=None, parent=None):
+    def __init__(self, sales_service=None, product_service=None, inventory_service=None, category_service=None, parent=None):
         super().__init__(parent)
         self.sales_service = sales_service
         self.product_service = product_service
         self.inventory_service = inventory_service
+        self.category_service = category_service
         self.cart = [] # List of (batch_data, quantity)
         self.store_id = 1 # Placeholder, should come from session
         self.setup_ui()
