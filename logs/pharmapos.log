@@ -1576,3 +1576,10 @@ AttributeError: 'str' object has no attribute 'isoformat'
 2026-02-17 16:36:11 - root - INFO - [logger.py:92] - ================================================================================
 2026-02-17 16:36:11 - desktop_app.analytics - DEBUG - [analytics.py:28] - DashboardAnalytics initialized
 2026-02-17 16:37:49 - desktop_app.analytics - DEBUG - [analytics.py:28] - DashboardAnalytics initialized
+2026-02-17 17:14:04 - root - INFO - [logger.py:89] - ================================================================================
+2026-02-17 17:14:04 - root - INFO - [logger.py:90] - PharmaPOS NG Started
+2026-02-17 17:14:04 - root - INFO - [logger.py:91] - Log directory: C:\Users\KAZEEM\Desktop\project\PharmPos\logs
+2026-02-17 17:14:04 - root - INFO - [logger.py:92] - ================================================================================
+2026-02-17 17:14:04 - desktop_app.analytics - DEBUG - [analytics.py:28] - DashboardAnalytics initialized
+2026-02-17 17:14:20 - desktop_app.analytics - DEBUG - [analytics.py:28] - DashboardAnalytics initialized
+2026-02-17 17:14:43 - desktop_app.analytics - DEBUG - [analytics.py:28] - DashboardAnalytics initialized
