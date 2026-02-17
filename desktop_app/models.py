@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, join
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -33,6 +33,8 @@ from desktop_app.database import (
     purchase_order_items,
     purchase_receipts,
     purchase_receipt_items,
+    product_categories,
+    activity_logs,
 )
 
 
