@@ -111,6 +111,7 @@ products = Table(
     Column("description", Text),
     Column("category", String),
     Column("generic_name", String),
+    Column("warehouse_location", String), # Aisle/Shelf location
     Column("cost_price", Numeric(10, 2), nullable=False),
     Column("selling_price", Numeric(10, 2), nullable=False), # Base selling price
     Column("retail_price", Numeric(10, 2)), # Override

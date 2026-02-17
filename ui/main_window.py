@@ -22,7 +22,8 @@ from .styles.stylesheets import Styles
 
 from core.services import (
     InventoryService, ProductService, SalesService, 
-    AnalyticsService, ReportService, StockTransferService
+    AnalyticsService, ReportService, StockTransferService,
+    CategoryService
 )
 from desktop_app.models import get_session
 
@@ -38,6 +39,7 @@ class MainAppWindow(QMainWindow):
         self.inventory_service = InventoryService(self.session)
         self.transfer_service = StockTransferService(self.session)
         self.product_service = ProductService(self.session)
+        self.category_service = CategoryService(self.session)
         self.sales_service = SalesService(self.session)
         self.analytics_service = AnalyticsService(self.session)
         self.report_service = ReportService(self.session)
@@ -76,9 +78,9 @@ class MainAppWindow(QMainWindow):
         
         # Views
         self.dashboard_view = DashboardView(self.analytics_service)
-        self.pos_view = POSView(self.sales_service, self.product_service, self.inventory_service)
+        self.pos_view = POSView(self.sales_service, self.product_service, self.inventory_service, self.category_service)
         self.inventory_view = InventoryView(self.inventory_service, self.transfer_service)
-        self.product_view = ProductView(self.product_service)
+        self.product_view = ProductView(self.product_service, self.category_service, self.inventory_service)
         self.customers_view = CustomersView()
         self.reports_view = ReportsView(self.report_service)
         

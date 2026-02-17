@@ -90,12 +90,12 @@ class ProductService(BaseService):
         model_service = ModelProductService(self.session)
         return model_service.get_product_by_barcode(barcode)
 
-    def get_all_products(self, active_only: bool = True) -> List[dict]:
-        """Get all products."""
+    def get_all_products(self, active_only: bool = True, category: str = None) -> List[dict]:
+        """Get all products, optionally filtered by category."""
         from desktop_app.models import ProductService as ModelProductService
         
         model_service = ModelProductService(self.session)
-        return model_service.get_all_products(active_only)
+        return model_service.get_all_products(active_only, category)
 
     def update_product(self, product_id: int, **kwargs) -> bool:
         """Update product details."""

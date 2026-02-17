@@ -155,6 +155,20 @@ class InventoryService(BaseService):
         ]
         return low_stock
 
+    def get_batch_history(self, batch_id: int) -> List[dict]:
+        """Get audit history for a specific batch."""
+        from desktop_app.models import InventoryService as ModelInventoryService
+        
+        inventory_service = ModelInventoryService(self.session)
+        return inventory_service.get_batch_history(batch_id)
+
+    def get_product_history(self, product_id: int, store_id: Optional[int] = None) -> List[dict]:
+        """Get movement history for a product."""
+        from desktop_app.models import InventoryService as ModelInventoryService
+        
+        inventory_service = ModelInventoryService(self.session)
+        return inventory_service.get_product_history(product_id, store_id)
+
 
 # --- Stock Transfer Service --------------------------------------------------
 class StockTransferService(BaseService):

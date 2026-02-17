@@ -181,6 +181,7 @@ class ProductService:
         min_stock: int = 0,
         max_stock: int = 9999,
         reorder_level: int = None,
+        warehouse_location: str = None,
     ) -> dict:
         """Create a new product with pricing tiers and stock alerts."""
         stmt = products.insert().values(
@@ -200,6 +201,7 @@ class ProductService:
             min_stock=min_stock,
             max_stock=max_stock,
             reorder_level=reorder_level,
+            warehouse_location=warehouse_location,
             sync_id=str(uuid.uuid4()),
         )
         result = self.session.execute(stmt)
@@ -346,9 +348,10 @@ class InventoryService:
         return dict(result._mapping) if result else None
 
     def get_store_inventory(self, store_id: int) -> List[dict]:
-        """Get all batches in store, ordered by expiry date (FEFO)."""
+        """Get all batches in store with product details, ordered by expiry date (FEFO)."""
         stmt = (
-            select(product_batches)
+            select(product_batches, products.c.name.label('product_name'), products.c.warehouse_location)
+            .select_from(join(product_batches, products, product_batches.c.product_id == products.c.id))
             .where(product_batches.c.store_id == store_id)
             .where(product_batches.c.quantity > 0)
             .order_by(product_batches.c.expiry_date)

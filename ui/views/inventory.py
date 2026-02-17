@@ -96,6 +96,7 @@ class InventoryView(QWidget):
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Filter by Product, SKU, or Batch number...")
+        self.search_input.textChanged.connect(self.refresh_table)
         self.search_input.setStyleSheet(f"""
             QLineEdit {{
                 border: 1px solid {Theme.BORDER};
@@ -120,14 +121,19 @@ class InventoryView(QWidget):
         table_layout = table_card.set_layout(QVBoxLayout())
         
         self.inventory_table = QTableWidget()
-        self.inventory_table.setColumnCount(6)
-        self.inventory_table.setHorizontalHeaderLabels(["Product", "Batch #", "Expiry Date", "Stock", "Cost", "Value"])
+        self.inventory_table.setColumnCount(7)
+        self.inventory_table.setHorizontalHeaderLabels(["Product", "Batch #", "Expiry", "Stock", "Location", "Cost", "Value"])
         self.inventory_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.inventory_table.setStyleSheet(f"border: none; background: transparent;")
+        self.inventory_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.inventory_table.verticalHeader().setVisible(False)
+        self.inventory_table.setStyleSheet("border: none; background: transparent;")
         table_layout.addWidget(self.inventory_table)
         
         layout.addWidget(table_card)
         layout.addStretch()
+
+        self.refresh_status()
+        self.refresh_table()
 
     def refresh_status(self):
         """Update metric cards from service."""
@@ -140,6 +146,36 @@ class InventoryView(QWidget):
         self.total_value_card.update_value(f"₦0.00") # TODO: Add value calculation to service
         self.expiring_card.update_value(str(len(expiring)))
         self.low_stock_card.update_value(str(status.get('low_stock_count', 0)))
+
+    def refresh_table(self):
+        """Populate inventory table with batch data."""
+        if not self.inventory_service: return
+        
+        query = self.search_input.text().lower()
+        batches = self.inventory_service.get_batches_by_store(self.store_id)
+        
+        if query:
+            batches = [b for b in batches if 
+                       query in b.get('product_name', '').lower() or 
+                       query in b.get('batch_number', '').lower()]
+            
+        self.inventory_table.setRowCount(len(batches))
+        for i, b in enumerate(batches):
+            self.inventory_table.setItem(i, 0, QTableWidgetItem(b.get('product_name', 'Unknown')))
+            self.inventory_table.setItem(i, 1, QTableWidgetItem(b.get('batch_number', 'N/A')))
+            self.inventory_table.setItem(i, 2, QTableWidgetItem(str(b.get('expiry_date', 'N/A'))))
+            self.inventory_table.setItem(i, 3, QTableWidgetItem(str(b.get('quantity', 0))))
+            self.inventory_table.setItem(i, 4, QTableWidgetItem(b.get('warehouse_location', 'N/A')))
+            self.inventory_table.setItem(i, 5, QTableWidgetItem(f"₦{b.get('cost_price', 0):,.2f}"))
+            
+            qty = b.get('quantity', 0)
+            cost = b.get('cost_price', 0)
+            value = float(qty) * float(cost)
+            self.inventory_table.setItem(i, 6, QTableWidgetItem(f"₦{value:,.2f}"))
+            
+            # Color coding for low stock or expiring
+            if qty < 10:
+                self.inventory_table.item(i, 3).setForeground(Qt.red)
 
     def handle_receive_stock(self):
         """Open dialog and receive new stock batch."""
