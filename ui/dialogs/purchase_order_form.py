@@ -5,11 +5,13 @@ PharmaPOS ERP - Purchase Order Form Dialog
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QComboBox, QTableWidget, QHeaderView,
-    QTableWidgetItem, QDateEdit, QFormLayout, QTextEdit, QMessageBox, QWidget
+    QTableWidgetItem, QDateEdit, QFormLayout, QTextEdit, QMessageBox, QWidget,
+    QDoubleSpinBox, QSpinBox
 )
 from PyQt5.QtCore import Qt, QDate
 from decimal import Decimal
 from ..styles.theme import Theme
+from ..dialogs.product_selector import ProductSelectorDialog
 
 class PurchaseOrderFormDialog(QDialog):
     def __init__(self, supplier_service, product_service, po_data=None, parent=None):
@@ -20,11 +22,9 @@ class PurchaseOrderFormDialog(QDialog):
         self.items = [] # [{product_id, name, sku, qty, cost}]
         
         self.setWindowTitle("Purchase Order")
-        self.resize(800, 600)
+        self.resize(850, 650)
         self.setup_ui()
         self.load_suppliers()
-        if self.po_data:
-            self.populate_data()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -144,23 +144,24 @@ class PurchaseOrderFormDialog(QDialog):
         pass
 
     def handle_add_item(self):
-        # TODO: Open Product Selector
-        # For now, simulate adding a product
-        products = self.product_service.get_all_products()
-        if not products:
-            QMessageBox.warning(self, "Error", "No products found. Please add products first.")
-            return
-            
-        p = products[0] # Pick first one for mock
-        item = {
-            "product_id": p['id'],
-            "name": p['name'],
-            "sku": p['sku'],
-            "cost": float(p.get('cost_price', 0)),
-            "qty": 10
-        }
-        self.items.append(item)
-        self.refresh_items_table()
+        selector = ProductSelectorDialog(self.product_service, self)
+        if selector.exec_():
+            p = selector.get_selected()
+            if p:
+                # Check if already added
+                if any(it['product_id'] == p['id'] for it in self.items):
+                    QMessageBox.information(self, "Duplicate", "Product already in order.")
+                    return
+                
+                item = {
+                    "product_id": p['id'],
+                    "name": p['name'],
+                    "sku": p['sku'],
+                    "cost": float(p.get('cost_price', 0)),
+                    "qty": 1
+                }
+                self.items.append(item)
+                self.refresh_items_table()
 
     def refresh_items_table(self):
         self.items_table.setRowCount(len(self.items))
@@ -168,14 +169,38 @@ class PurchaseOrderFormDialog(QDialog):
         for i, item in enumerate(self.items):
             self.items_table.setItem(i, 0, QTableWidgetItem(item['name']))
             self.items_table.setItem(i, 1, QTableWidgetItem(item['sku']))
-            self.items_table.setItem(i, 2, QTableWidgetItem(f"₦{item['cost']:,.2f}"))
-            self.items_table.setItem(i, 3, QTableWidgetItem(str(item['qty'])))
             
+            # Cost Input
+            cost_spin = QDoubleSpinBox()
+            cost_spin.setRange(0, 10000000)
+            cost_spin.setValue(item['cost'])
+            cost_spin.setPrefix("₦")
+            cost_spin.valueChanged.connect(lambda val, idx=i: self.update_item_val(idx, 'cost', val))
+            self.items_table.setCellWidget(i, 2, cost_spin)
+            
+            # Qty Input
+            qty_spin = QSpinBox()
+            qty_spin.setRange(1, 100000)
+            qty_spin.setValue(int(item['qty']))
+            qty_spin.valueChanged.connect(lambda val, idx=i: self.update_item_val(idx, 'qty', val))
+            self.items_table.setCellWidget(i, 3, qty_spin)
+
             line_total = Decimal(str(item['cost'])) * Decimal(str(item['qty']))
             total += line_total
             self.items_table.setItem(i, 4, QTableWidgetItem(f"₦{float(line_total):,.2f}"))
             
         self.total_label.setText(f"₦{float(total):,.2f}")
+
+    def update_item_val(self, index, key, value):
+        self.items[index][key] = value
+        # Recalculate line total 
+        item = self.items[index]
+        line_total = Decimal(str(item['cost'])) * Decimal(str(item['qty']))
+        self.items_table.setItem(index, 4, QTableWidgetItem(f"₦{float(line_total):,.2f}"))
+        
+        # Update grand total
+        grand_total = sum(Decimal(str(it['cost'])) * Decimal(str(it['qty'])) for it in self.items)
+        self.total_label.setText(f"₦{float(grand_total):,.2f}")
 
     def handle_save(self):
         if self.supplier_combo.currentIndex() < 0:
