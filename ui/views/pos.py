@@ -355,6 +355,24 @@ class POSView(QWidget):
         else:
             QMessageBox.warning(self, "No Stock", f"No available batches for {product_name} in this store.")
 
+    def add_batch_to_cart(self, batch_data, product_name):
+        """Add a specific batch to the cart."""
+        # Check if already in cart
+        for item in self.cart:
+            if item['batch_id'] == batch_data.get('id'):
+                item['quantity'] += 1
+                self.update_cart_display()
+                return
+
+        self.cart.append({
+            'product_name': product_name,
+            'batch_id': batch_data.get('id'),
+            'batch_number': batch_data.get('batch_number'),
+            'price': float(batch_data.get('retail_price') or batch_data.get('selling_price') or 0),
+            'quantity': 1
+        })
+        self.update_cart_display()
+
     def update_catalog(self, products):
         """Populate the grid with product cards."""
         # Clear existing
@@ -381,22 +399,6 @@ class POSView(QWidget):
             empty_lbl = QLabel("No products found.")
             empty_lbl.setAlignment(Qt.AlignCenter)
             self.grid_layout.addWidget(empty_lbl, 0, 0)
-        """Add a specific batch to the cart."""
-        # Check if already in cart
-        for item in self.cart:
-            if item['batch_id'] == batch_data.get('id'):
-                item['quantity'] += 1
-                self.update_cart_display()
-                return
-
-        self.cart.append({
-            'product_name': product_name,
-            'batch_id': batch_data.get('id'),
-            'batch_number': batch_data.get('batch_number'),
-            'price': float(batch_data.get('retail_price') or batch_data.get('selling_price') or 0),
-            'quantity': 1
-        })
-        self.update_cart_display()
 
     def update_cart_display(self):
         self.cart_table.setRowCount(len(self.cart))

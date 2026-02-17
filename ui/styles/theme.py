@@ -15,6 +15,7 @@ class Theme:
     SURFACE_CARD = "#FFFFFF"      # Pure white for cards/content
     SURFACE_SIDEBAR = "#0F172A"   # Deep Slate/Indigo for sidebar
     SURFACE_HEADER = "#FFFFFF"
+    SURFACE_LIGHT = "#F1F5F9"     # Very light gray for backgrounds
     
     # Primaries (Indigo based for premium feel)
     PRIMARY = "#6366F1"           # Indigo 500
