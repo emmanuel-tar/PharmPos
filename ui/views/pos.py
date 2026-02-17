@@ -8,9 +8,9 @@ Supports both retail scanning and pharmaceutical batch selection.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QTableWidget, QHeaderView, QPushButton, QSpacerItem, QSizePolicy,
-    QFrame, QMessageBox, QTableWidgetItem, QInputDialog
+    QFrame, QMessageBox, QTableWidgetItem, QInputDialog, QCompleter
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QStringListModel
 
 from ..components.widgets import ERPCard
 from ..styles.theme import Theme
@@ -31,7 +31,20 @@ class POSView(QWidget):
         self.cart = [] # List of (batch_data, quantity)
         self.store_id = 1 # Placeholder, should come from session
         self.current_customer = None
+        self.current_category = None
         self.setup_ui()
+        self.init_search_completer()
+        self.load_categories()
+        # Initial catalog load
+        self.handle_search()
+
+    def clear_cart(self):
+        if not self.cart: return
+        res = QMessageBox.question(self, "Clear Cart", "Are you sure you want to empty the cart?", 
+                                 QMessageBox.Yes | QMessageBox.No)
+        if res == QMessageBox.Yes:
+            self.cart = []
+            self.update_cart_display()
 
     def setup_ui(self):
         layout = QHBoxLayout(self)
@@ -63,8 +76,23 @@ class POSView(QWidget):
             }}
         """)
         self.search_input.returnPressed.connect(self.handle_search)
+        
+        # Assisted Search Completer
+        self.completer = QCompleter(self)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchContains)
+        self.completer.activated.connect(self.handle_completer_selection)
+        self.search_input.setCompleter(self.completer)
+        
         search_layout.addWidget(self.search_input)
         left_side.addWidget(search_card)
+
+        # Categories Card
+        self.cat_scroll = QFrame()
+        self.cat_scroll.setFixedHeight(60)
+        self.cat_layout = QHBoxLayout(self.cat_scroll)
+        self.cat_layout.setContentsMargins(0, 0, 0, 0)
+        left_side.addWidget(self.cat_scroll)
 
         # Product Grid/Table Card
         catalog_card = ERPCard()
@@ -129,7 +157,7 @@ class POSView(QWidget):
         
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(4)
-        self.cart_table.setHorizontalHeaderLabels(["Item", "Batch", "Qty", "Total"])
+        self.cart_table.setHorizontalHeaderLabels(["Item", "Price", "Qty", "Total"])
         self.cart_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.cart_table.setStyleSheet(f"border: none; background: transparent;")
         cart_layout.addWidget(self.cart_table)
@@ -182,24 +210,147 @@ class POSView(QWidget):
         right_side.addWidget(cart_card)
         layout.addLayout(right_side, stretch=2)
 
-    def handle_search(self):
-        """Search products and display in catalog."""
-        search_term = self.search_input.text().strip()
-        if not self.product_service or not search_term:
-            self.catalog_table.setRowCount(0)
-            return
+    def load_categories(self):
+        """Load categories and create buttons."""
+        if not self.category_service: return
+        
+        # Clear existing
+        for i in reversed(range(self.cat_layout.count())): 
+            self.cat_layout.itemAt(i).widget().setParent(None)
+
+        # Add "ALL" button
+        all_btn = QPushButton("ALL ITEMS")
+        all_btn.setStyleSheet(self.get_cat_btn_style(True))
+        all_btn.clicked.connect(lambda: self.filter_by_category(None))
+        self.cat_layout.addWidget(all_btn)
+        self.cat_btns = {None: all_btn}
 
         try:
+            categories = self.category_service.get_all_categories()
+            for cat in categories:
+                btn = QPushButton(cat['name'].upper())
+                btn.setStyleSheet(self.get_cat_btn_style(False))
+                btn.clicked.connect(lambda ch, c=cat['name']: self.filter_by_category(c))
+                self.cat_layout.addWidget(btn)
+                self.cat_btns[cat['name']] = btn
+        except Exception as e:
+            print(f"Error loading categories: {e}")
+        
+        self.cat_layout.addStretch()
+
+    def get_cat_btn_style(self, active=False):
+        bg = Theme.PRIMARY if active else Theme.SURFACE_CARD
+        fg = "white" if active else Theme.TEXT_MAIN
+        border = Theme.PRIMARY if active else Theme.BORDER
+        return f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 15px;
+                padding: 4px 16px;
+                font-weight: 600;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                background-color: {Theme.PRIMARY};
+                color: white;
+            }}
+        """
+
+    def filter_by_category(self, category_name):
+        self.current_category = category_name
+        # Update styles
+        for name, btn in self.cat_btns.items():
+            btn.setStyleSheet(self.get_cat_btn_style(name == category_name))
+        self.handle_search()
+
+    def init_search_completer(self):
+        """Pre-load products for the search completer."""
+        if not self.product_service: return
+        try:
             products = self.product_service.get_all_products()
-            # Basic client-side filter for now, or use service search if available
-            filtered = [
-                p for p in products 
-                if search_term.lower() in p['name'].lower() 
-                or search_term.lower() in p['sku'].lower()
-            ]
+            keywords = []
+            for p in products:
+                keywords.append(p['name'])
+                if p.get('sku'): keywords.append(p['sku'])
+                if p.get('barcode'): keywords.append(p['barcode'])
+            
+            # Remove duplicates and empty strings
+            keywords = list(set(filter(None, keywords)))
+            
+            model = QStringListModel()
+            model.setStringList(keywords)
+            self.completer.setModel(model)
+        except Exception as e:
+            print(f"Error initializing completer: {e}")
+
+    def handle_completer_selection(self, text):
+        """Handle item selection from the assisted search dropdown."""
+        if not self.product_service: return
+        
+        try:
+            # Try to find exactly by name, sku or barcode
+            products = self.product_service.get_all_products()
+            match = next((p for p in products if p['name'] == text or p['sku'] == text or p.get('barcode') == text), None)
+            
+            if match:
+                self.add_product_to_cart(match)
+                self.search_input.clear()
+        except Exception as e:
+            print(f"Selection error: {e}")
+
+    def handle_search(self):
+        """Search products and display in catalog or add to cart if exact match."""
+        if not self.product_service:
+            return
+
+        search_term = self.search_input.text().strip()
+        
+        try:
+            products = self.product_service.get_all_products(category=self.current_category)
+            
+            # 1. Check for Exact Match (Barcode/SKU) for immediate addition
+            if search_term:
+                exact_match = next((p for p in products if p['sku'].lower() == search_term.lower() or (p.get('barcode') and p['barcode'].lower() == search_term.lower())), None)
+                
+                if exact_match:
+                    self.add_product_to_cart(exact_match)
+                    self.search_input.clear()
+                    # If we don't have a category filter, we might want to clear the table
+                    if not self.current_category:
+                        self.catalog_table.setRowCount(0)
+                        return
+                    # If we DO have a category, keep showing the category items
+                    search_term = "" # continue to show all in category
+            
+            # 2. Update the catalog table with results
+            if search_term:
+                filtered = [
+                    p for p in products 
+                    if search_term.lower() in p['name'].lower() 
+                    or search_term.lower() in p['sku'].lower()
+                    or (p.get('barcode') and search_term.lower() in p['barcode'].lower())
+                ]
+            else:
+                filtered = products
+            
             self.update_catalog(filtered)
         except Exception as e:
             print(f"Search error: {e}")
+
+    def add_product_to_cart(self, product_data):
+        """Add a specific product to the cart using FEFO."""
+        if not self.inventory_service: return
+        
+        product_id = product_data['id']
+        product_name = product_data['name']
+        
+        batch = self.inventory_service.get_fefo_batch(product_id, self.store_id)
+        if batch:
+            self.add_batch_to_cart(batch, product_name)
+        else:
+            QMessageBox.warning(self, "No Stock", f"No available batches for {product_name} in this store.")
 
     def update_catalog(self, products):
         """Populate the catalog table with search results."""
@@ -289,7 +440,7 @@ class POSView(QWidget):
             'product_name': product_name,
             'batch_id': batch_data.get('id'),
             'batch_number': batch_data.get('batch_number'),
-            'price': batch_data.get('selling_price', 0),
+            'price': float(batch_data.get('retail_price') or batch_data.get('selling_price') or 0),
             'quantity': 1
         })
         self.update_cart_display()
@@ -304,8 +455,8 @@ class POSView(QWidget):
             # Item Name
             self.cart_table.setItem(i, 0, QTableWidgetItem(item['product_name']))
             
-            # Batch info
-            self.cart_table.setItem(i, 1, QTableWidgetItem(item['batch_number']))
+            # Price
+            self.cart_table.setItem(i, 1, QTableWidgetItem(f"₦{item['price']:,.2f}"))
             
             # Qty with modifiers
             qty_widget = QWidget()
@@ -346,12 +497,13 @@ class POSView(QWidget):
             
             self.cart_table.setCellWidget(i, 3, total_widget)
 
-        subtotal = total / 1.075 # Reverse VAT for display
-        vat = total - subtotal
+        subtotal = total
+        vat = total * 0.075
+        grand_total = subtotal + vat
         
         self.subtotal_label.setText(f"₦{subtotal:,.2f}")
         self.vat_label.setText(f"₦{vat:,.2f}")
-        self.total_label.setText(f"₦{total:,.2f}")
+        self.total_label.setText(f"₦{grand_total:,.2f}")
 
     def change_qty(self, index, delta):
         if 0 <= index < len(self.cart):
@@ -456,3 +608,4 @@ class POSView(QWidget):
             self.search_input.clear()
             self.catalog_table.setRowCount(0)
             QMessageBox.information(self, "Success", "Transaction finalized and bill closed.")
+

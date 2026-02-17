@@ -176,6 +176,10 @@ class InventoryService(BaseService):
         inventory_service = ModelInventoryService(self.session)
         return inventory_service.get_store_inventory(store_id)
 
+    def get_store_inventory(self, store_id: int) -> List[dict]:
+        """Alias for get_batches_by_store to match POS view expectation."""
+        return self.get_batches_by_store(store_id)
+
 
 # --- Stock Transfer Service --------------------------------------------------
 class StockTransferService(BaseService):
