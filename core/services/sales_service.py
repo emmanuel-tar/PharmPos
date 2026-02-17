@@ -225,18 +225,6 @@ class SalesService(BaseService):
     ) -> tuple[bool, str, Optional[dict]]:
         """
         Complete the sale transaction.
-        
-        Args:
-            user_id: User completing the sale
-            store_id: Store where sale is made
-            cart: Shopping cart items
-            payment_method: Payment method used
-            amount_paid: Amount paid by customer
-            payment_reference: Optional payment reference
-            gateway_response: Optional gateway response
-            
-        Returns:
-            Tuple of (success, message, sale_data)
         """
         if not cart:
             return False, "Cart is empty", None
@@ -267,6 +255,95 @@ class SalesService(BaseService):
             return True, "Sale completed successfully", sale
         except Exception as e:
             return False, f"Sale failed: {str(e)}", None
+
+    def suspend_sale(
+        self,
+        user_id: int,
+        store_id: int,
+        cart: List[dict],
+        reference: Optional[str] = None
+    ) -> tuple[bool, str, Optional[int]]:
+        """
+        Suspend a sale (On-Hold).
+        """
+        if not cart:
+            return False, "Cart is empty", None
+
+        try:
+            from desktop_app.database import suspended_sales, suspended_sale_items
+            
+            total = self.calculate_cart_total(cart)
+            
+            # Create suspended sale record
+            ss_stmt = suspended_sales.insert().values(
+                reference=reference,
+                total_amount=total,
+                user_id=user_id,
+                store_id=store_id,
+            )
+            result = self.session.execute(ss_stmt)
+            suspended_id = result.inserted_primary_key[0]
+            
+            # Add items
+            for item in cart:
+                item_stmt = suspended_sale_items.insert().values(
+                    suspended_sale_id=suspended_id,
+                    product_batch_id=item['batch_id'],
+                    quantity=item['quantity'],
+                    unit_price=item['unit_price']
+                )
+                self.session.execute(item_stmt)
+                
+            self.session.commit()
+            return True, "Sale suspended successfully", suspended_id
+        except Exception as e:
+            self.session.rollback()
+            return False, f"Failed to suspend sale: {str(e)}", None
+
+    def get_suspended_sales(self, store_id: int) -> List[dict]:
+        """Get all suspended sales for a store."""
+        from desktop_app.database import suspended_sales
+        from sqlalchemy import select
+        
+        stmt = select(suspended_sales).where(suspended_sales.c.store_id == store_id).order_by(suspended_sales.c.created_at.desc())
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def get_suspended_sale_items(self, suspended_id: int) -> List[dict]:
+        """Get items for a suspended sale."""
+        from desktop_app.database import suspended_sale_items, product_batches, products
+        from sqlalchemy import select, join
+        
+        # Use a join to get batch and product details for reconstruction
+        j = join(suspended_sale_items, product_batches, suspended_sale_items.c.product_batch_id == product_batches.c.id).join(
+            products, product_batches.c.product_id == products.c.id
+        )
+        stmt = select(
+            suspended_sale_items.c.id,
+            suspended_sale_items.c.product_batch_id.label('batch_id'),
+            suspended_sale_items.c.quantity,
+            suspended_sale_items.c.unit_price.label('price'),
+            product_batches.c.batch_number,
+            products.c.name.label('product_name')
+        ).select_from(j).where(suspended_sale_items.c.suspended_sale_id == suspended_id)
+        
+        results = self.session.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in results]
+
+    def delete_suspended_sale(self, suspended_id: int) -> bool:
+        """Delete a suspended sale after recall."""
+        from desktop_app.database import suspended_sales
+        from sqlalchemy import delete
+        
+        try:
+            stmt = delete(suspended_sales).where(suspended_sales.c.id == suspended_id)
+            self.session.execute(stmt)
+            self.session.commit()
+            return True
+        except Exception as e:
+            self.session.rollback()
+            print(f"Delete failed: {e}")
+            return False
 
 
 __all__ = [
