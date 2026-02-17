@@ -8,7 +8,7 @@ Focus on FEFO tracking, batch management, and stock alerts.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, 
     QHeaderView, QPushButton, QSpacerItem, QSizePolicy,
-    QFrame, QLineEdit
+    QFrame, QLineEdit, QTableWidgetItem
 )
 from PyQt5.QtCore import Qt
 
