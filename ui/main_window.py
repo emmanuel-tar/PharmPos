@@ -23,7 +23,7 @@ from .styles.stylesheets import Styles
 from core.services import (
     InventoryService, ProductService, SalesService, 
     AnalyticsService, ReportService, StockTransferService,
-    CategoryService, ProcurementService
+    CategoryService, ProcurementService, CustomerService
 )
 from desktop_app.models import get_session
 
@@ -44,6 +44,7 @@ class MainAppWindow(QMainWindow):
         self.analytics_service = AnalyticsService(self.session)
         self.report_service = ReportService(self.session)
         self.procurement_service = ProcurementService(self.session)
+        self.customer_service = CustomerService(self.session)
 
         self.setWindowTitle("PharmaPOS ERP")
         self.resize(1280, 800)
@@ -79,7 +80,7 @@ class MainAppWindow(QMainWindow):
         
         # Views
         self.dashboard_view = DashboardView(self.analytics_service)
-        self.pos_view = POSView(self.sales_service, self.product_service, self.inventory_service, self.category_service)
+        self.pos_view = POSView(self.sales_service, self.product_service, self.inventory_service, self.category_service, self.customer_service)
         self.procurement_view = ProcurementView(self.inventory_service, self.procurement_service, self.transfer_service, self.product_service)
         self.product_view = ProductView(self.product_service, self.category_service, self.inventory_service, self.analytics_service)
         self.customers_view = CustomersView()

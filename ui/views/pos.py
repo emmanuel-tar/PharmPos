@@ -21,12 +21,13 @@ from ..dialogs.customer_selector import CustomerSelectorDialog
 
 class POSView(QWidget):
     """Versatile POS interface."""
-    def __init__(self, sales_service=None, product_service=None, inventory_service=None, category_service=None, parent=None):
+    def __init__(self, sales_service=None, product_service=None, inventory_service=None, category_service=None, customer_service=None, parent=None):
         super().__init__(parent)
         self.sales_service = sales_service
         self.product_service = product_service
         self.inventory_service = inventory_service
         self.category_service = category_service
+        self.customer_service = customer_service
         self.cart = [] # List of (batch_data, quantity)
         self.store_id = 1 # Placeholder, should come from session
         self.current_customer = None
@@ -420,8 +421,11 @@ class POSView(QWidget):
 
     def handle_customer_select(self):
         """Open customer selector and assign to sale."""
-        # Assuming a customer_service exists or just use model logic
-        dialog = CustomerSelectorDialog(None, self)
+        if not self.customer_service:
+            QMessageBox.warning(self, "Service Error", "Customer service not available.")
+            return
+            
+        dialog = CustomerSelectorDialog(self.customer_service, self)
         if dialog.exec_():
             self.current_customer = dialog.get_selected()
             if self.current_customer:
