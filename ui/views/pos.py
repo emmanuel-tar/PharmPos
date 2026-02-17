@@ -90,9 +90,34 @@ class POSView(QWidget):
         cart_card = ERPCard()
         cart_layout = QVBoxLayout(cart_card)
         
+        cart_header_row = QHBoxLayout()
         cart_header = QLabel("Current Cart")
         cart_header.setStyleSheet(f"color: {Theme.TEXT_MAIN}; font-size: 16px; font-weight: 600;")
-        cart_layout.addWidget(cart_header)
+        cart_header_row.addWidget(cart_header)
+        cart_header_row.addStretch()
+        
+        self.customer_btn = QPushButton("SELECT CUSTOMER")
+        self.customer_btn.setStyleSheet(f"color: {Theme.PRIMARY}; font-weight: bold; font-size: 12px; border: 1px solid {Theme.PRIMARY}; padding: 4px 8px; border-radius: 4px;")
+        cart_header_row.addWidget(self.customer_btn)
+        cart_layout.addLayout(cart_header_row)
+        
+        # Action Bar (Hold, Recall, Clear)
+        action_bar = QHBoxLayout()
+        
+        self.hold_btn = QPushButton("HOLD")
+        self.hold_btn.setStyleSheet(f"background-color: {Theme.INFO}; color: white; border-radius: 4px; padding: 6px; font-size: 10px; font-weight: bold;")
+        
+        self.recall_btn = QPushButton("RECALL")
+        self.recall_btn.setStyleSheet(f"background-color: {Theme.PRIMARY}; color: white; border-radius: 4px; padding: 6px; font-size: 10px; font-weight: bold;")
+        
+        self.clear_btn = QPushButton("CLEAR")
+        self.clear_btn.setStyleSheet(f"background-color: {Theme.DANGER}; color: white; border-radius: 4px; padding: 6px; font-size: 10px; font-weight: bold;")
+        self.clear_btn.clicked.connect(self.clear_cart)
+        
+        action_bar.addWidget(self.hold_btn)
+        action_bar.addWidget(self.recall_btn)
+        action_bar.addWidget(self.clear_btn)
+        cart_layout.addLayout(action_bar)
         
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(4)
@@ -150,15 +175,41 @@ class POSView(QWidget):
 
     def handle_search(self):
         """Search products and display in catalog."""
-        search_term = self.search_input.text()
+        search_term = self.search_input.text().strip()
         if not self.product_service or not search_term:
+            self.catalog_table.setRowCount(0)
             return
 
-        # Assuming product_service.search_products returns a list of dicts
-        # This is a placeholder for real service integration
-        print(f"Searching for: {search_term}")
-        # products = self.product_service.search_products(search_term)
-        # self.update_catalog(products)
+        try:
+            products = self.product_service.get_all_products()
+            # Basic client-side filter for now, or use service search if available
+            filtered = [
+                p for p in products 
+                if search_term.lower() in p['name'].lower() 
+                or search_term.lower() in p['sku'].lower()
+            ]
+            self.update_catalog(filtered)
+        except Exception as e:
+            print(f"Search error: {e}")
+
+    def update_catalog(self, products):
+        """Populate the catalog table with search results."""
+        self.catalog_table.setRowCount(len(products))
+        for i, p in enumerate(products):
+            self.catalog_table.setItem(i, 0, QTableWidgetItem(p['name']))
+            self.catalog_table.setItem(i, 1, QTableWidgetItem(p['sku']))
+            
+            # Stock: Get aggregate stock for this product across all batches in this store
+            stock = 0
+            if self.inventory_service:
+                batches = self.inventory_service.get_store_inventory(self.store_id)
+                stock = sum(b['quantity'] for b in batches if b['product_id'] == p['id'])
+            
+            self.catalog_table.setItem(i, 2, QTableWidgetItem(str(stock)))
+            self.catalog_table.setItem(i, 3, QTableWidgetItem(f"₦{float(p.get('selling_price', 0)):,.2f}"))
+            
+            # Store product data for metadata access
+            self.catalog_table.item(i, 0).setData(Qt.UserRole, p)
 
     def add_selected_to_cart(self):
         """Add double-clicked product to cart using FEFO."""
@@ -166,15 +217,19 @@ class POSView(QWidget):
         if not selected_rows or not self.inventory_service:
             return
             
-        product_id = 1 # Placeholder
-        product_name = self.catalog_table.item(selected_rows[0].row(), 0).text()
+        product_data = self.catalog_table.item(selected_rows[0].row(), 0).data(Qt.UserRole)
+        if not product_data:
+            return
+            
+        product_id = product_data['id']
+        product_name = product_data['name']
         
         # Default to FEFO
         batch = self.inventory_service.get_fefo_batch(product_id, self.store_id)
         if batch:
             self.add_batch_to_cart(batch, product_name)
         else:
-            print("No batches available!")
+            QMessageBox.warning(self, "No Stock", f"No available batches for {product_name} in this store.")
 
     def open_batch_picker(self):
         """Manually select a batch for the selected product."""
@@ -182,20 +237,26 @@ class POSView(QWidget):
         if not selected_rows or not self.inventory_service:
             return
 
-        product_id = 1 # Placeholder
-        product_name = self.catalog_table.item(selected_rows[0].row(), 0).text()
+        product_data = self.catalog_table.item(selected_rows[0].row(), 0).data(Qt.UserRole)
+        if not product_data:
+            return
+            
+        product_id = product_data['id']
+        product_name = product_data['name']
         
         # Get all batches for this product
-        # Placeholder for real service call
-        batches = [
-            {'id': 101, 'batch_number': 'B-001', 'expiry_date': '2025-12-31', 'quantity': 50, 'selling_price': 1500},
-            {'id': 102, 'batch_number': 'B-002', 'expiry_date': '2026-06-30', 'quantity': 100, 'selling_price': 1500},
-        ]
+        batches = self.inventory_service.get_store_inventory(self.store_id)
+        product_batches = [b for b in batches if b['product_id'] == product_id and b['quantity'] > 0]
         
-        dialog = BatchSelectionDialog(product_name, batches, self)
+        if not product_batches:
+            QMessageBox.warning(self, "No Stock", "No active batches found for this product.")
+            return
+
+        dialog = BatchSelectionDialog(product_name, product_batches, self)
         if dialog.exec_():
             batch = dialog.get_selected_batch()
-            self.add_batch_to_cart(batch, product_name)
+            if batch:
+                self.add_batch_to_cart(batch, product_name)
 
     def contextMenuEvent(self, event):
         """Right-click menu for manual batch selection."""

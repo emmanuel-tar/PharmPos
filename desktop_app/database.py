@@ -253,6 +253,64 @@ sale_items = Table(
 )
 
 
+# suspended_sales (On-Hold / Suspended transactions)
+suspended_sales = Table(
+    "suspended_sales",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("reference", String, nullable=True), # Optional name for the held sale
+    Column("total_amount", Numeric(10, 2), nullable=False),
+    Column(
+        "customer_id",
+        Integer,
+        ForeignKey("customers.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    ),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "store_id",
+        Integer,
+        ForeignKey("stores.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime, server_default=func.now(), nullable=False),
+    Column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+        nullable=False,
+    ),
+)
+
+
+# suspended_sale_items
+suspended_sale_items = Table(
+    "suspended_sale_items",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "suspended_sale_id",
+        Integer,
+        ForeignKey("suspended_sales.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "product_batch_id",
+        Integer,
+        ForeignKey("product_batches.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    Column("quantity", Integer, nullable=False),
+    Column("unit_price", Numeric(10, 2), nullable=False),
+)
+
+
 # stock_transfers
 stock_transfers = Table(
     "stock_transfers",
