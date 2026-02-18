@@ -260,9 +260,47 @@ class ProductService:
         self.session.commit()
         return True
 
-    def deactivate_product(self, product_id: int) -> bool:
+    def deactivated_product(self, product_id: int) -> bool:
         """Deactivate a product (soft delete)."""
         return self.update_product(product_id, is_active=False)
+
+    def get_products_with_stock(self, store_id: int, active_only: bool = True, category: str = None) -> List[dict]:
+        """Get all products with their total stock quantity for a specific store."""
+        # Calculate total stock per product for the store
+        stock_subquery = (
+            select(
+                product_batches.c.product_id,
+                func.sum(product_batches.c.quantity).label("total_stock")
+            )
+            .where(product_batches.c.store_id == store_id)
+            .group_by(product_batches.c.product_id)
+            .subquery()
+        )
+
+        # Join products with the stock subquery
+        stmt = select(
+            products,
+            func.coalesce(stock_subquery.c.total_stock, 0).label("stock_quantity")
+        ).outerjoin(
+            stock_subquery, products.c.id == stock_subquery.c.product_id
+        )
+
+        if active_only:
+            stmt = stmt.where(products.c.is_active == True)
+        if category:
+            stmt = stmt.where(products.c.category == category)
+        
+        results = self.session.execute(stmt).fetchall()
+        
+        # Convert to list of dicts, flattening the result
+        output = []
+        for row in results:
+            # interacting with the result row can be tricky because we have the Product table columns AND the scalar stock_quantity
+            # row._mapping keys will be like 'id', 'name', ..., 'stock_quantity'
+            p_dict = dict(row._mapping)
+            output.append(p_dict)
+            
+        return output
 
 
 # --- Inventory Service (Batch & Stock) ---------------------------------------

@@ -119,11 +119,24 @@ class ProductCard(ERPCard):
         layout.addWidget(name_label)
 
         # Price
+        price_row = QHBoxLayout()
         price = product_data.get('selling_price', 0)
         price_label = QLabel(f"₦{float(price):,.2f}")
-        price_label.setAlignment(Qt.AlignCenter)
         price_label.setStyleSheet(f"color: {Theme.PRIMARY}; font-weight: 800; font-size: 14px;")
-        layout.addWidget(price_label)
+        price_row.addWidget(price_label)
+        
+        # Stock Level
+        stock_qty = product_data.get('stock_quantity', 0)
+        stock_label = QLabel(f"Qty: {stock_qty}")
+        stock_color = Theme.TEXT_MUTED
+        if stock_qty <= (product_data.get('min_stock', 0) or 0):
+            stock_color = Theme.DANGER
+            
+        stock_label.setStyleSheet(f"color: {stock_color}; font-size: 11px; font-weight: 600;")
+        price_row.addStretch()
+        price_row.addWidget(stock_label)
+        
+        layout.addLayout(price_row)
         
         layout.addStretch()
 

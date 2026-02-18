@@ -101,6 +101,13 @@ class ProductService(BaseService):
         model_service = ModelProductService(self.session)
         return model_service.get_all_products(active_only, category)
 
+    def get_products_with_stock(self, store_id: int, active_only: bool = True, category: str = None) -> List[dict]:
+        """Get all products with stock quantity for a specific store."""
+        from desktop_app.models import ProductService as ModelProductService
+        
+        model_service = ModelProductService(self.session)
+        return model_service.get_products_with_stock(store_id, active_only, category)
+
     def update_product(self, product_id: int, **kwargs) -> bool:
         """Update product details."""
         from desktop_app.models import ProductService as ModelProductService

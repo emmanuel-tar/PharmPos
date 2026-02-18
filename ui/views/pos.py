@@ -311,7 +311,11 @@ class POSView(QWidget):
         search_term = self.search_input.text().strip()
         
         try:
-            products = self.product_service.get_all_products(category=self.current_category)
+            # Use get_products_with_stock instead of get_all_products
+            if hasattr(self.product_service, 'get_products_with_stock'):
+                products = self.product_service.get_products_with_stock(self.store_id, category=self.current_category)
+            else:
+                products = self.product_service.get_all_products(category=self.current_category)
             
             # 1. Check for Exact Match (Barcode/SKU) for immediate addition
             if search_term:

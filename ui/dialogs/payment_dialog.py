@@ -98,34 +98,58 @@ class PaymentDialog(QDialog):
             self.change_frame.show()
             self.ref_lbl.hide()
             self.ref_input.hide()
+            self.amount_paid_input.setFocus()
         else:
             self.amount_paid_lbl.hide()
             self.amount_paid_input.hide()
             self.change_frame.hide()
             self.ref_lbl.show()
             self.ref_input.show()
+            self.ref_input.setFocus()
 
     def calculate_change(self):
         try:
-            paid = Decimal(self.amount_paid_input.text() or "0")
+            text = self.amount_paid_input.text().replace(',', '')
+            if not text:
+                self.change_label.setText("CHANGE: ₦0.00")
+                return
+                
+            paid = Decimal(text)
             change = paid - self.total_amount
+            
             if change < 0:
-                self.change_label.setText("INSUFFICIENT")
-                self.change_label.setStyleSheet("color: red; font-size: 16px; font-weight: 700;")
+                short = abs(change)
+                self.change_label.setText(f"SHORT: -₦{short:,.2f}")
+                self.change_label.setStyleSheet(f"color: {Theme.DANGER}; font-size: 16px; font-weight: 700;")
             else:
                 self.change_label.setText(f"CHANGE: ₦{change:,.2f}")
-                self.change_label.setStyleSheet(f"color: {Theme.TEXT_MAIN}; font-size: 16px; font-weight: 700;")
-        except:
-            self.change_label.setText("INVALID")
+                self.change_label.setStyleSheet(f"color: {Theme.SUCCESS}; font-size: 16px; font-weight: 700;")
+        except Exception:
+            self.change_label.setText("INVALID AMOUNT")
+            self.change_label.setStyleSheet(f"color: {Theme.DANGER}; font-size: 16px; font-weight: 700;")
 
     def handle_finalize(self):
         method = self.method_combo.currentText().lower()
-        amount_paid = Decimal(self.amount_paid_input.text() or "0")
-        reference = self.ref_input.text()
-
-        if method == "cash" and amount_paid < self.total_amount:
-            QMessageBox.warning(self, "Insufficient Payment", "Amount paid must be equal or greater than the total.")
-            return
+        
+        # Validation
+        if method == "cash":
+            try:
+                text = self.amount_paid_input.text().replace(',', '')
+                amount_paid = Decimal(text)
+                if amount_paid < self.total_amount:
+                    QMessageBox.warning(self, "Insufficient Payment", 
+                        f"Amount paid (₦{amount_paid:,.2f}) is less than total (₦{self.total_amount:,.2f})")
+                    return
+            except:
+                QMessageBox.warning(self, "Invalid Input", "Please enter a valid numeric amount.")
+                return
+        else:
+            # Non-cash methods usually mean full payment is confirmed externally
+            amount_paid = self.total_amount
+            reference = self.ref_input.text().strip()
+            if not reference:
+                QMessageBox.warning(self, "Reference Required", "Please enter a transaction reference number.")
+                return
 
         # Prepare cart logic for finalized sale
         final_items = []
@@ -141,12 +165,12 @@ class PaymentDialog(QDialog):
             store_id=self.store_id,
             cart=final_items,
             payment_method=method,
-            amount_paid=amount_paid if method == "cash" else self.total_amount,
-            payment_reference=reference
+            amount_paid=amount_paid,
+            payment_reference=self.ref_input.text().strip() if method != "cash" else None
         )
 
         if success:
-            QMessageBox.information(self, "Success", f"Sale Completed! Receipt #: {sale_data['receipt_number']}")
+            QMessageBox.information(self, "Success", f"Sale Completed!\nReceipt #: {sale_data['receipt_number']}")
             self.accept()
         else:
-            QMessageBox.critical(self, "Error", msg)
+            QMessageBox.critical(self, "Error", f"Transaction Failed:\n{msg}")
