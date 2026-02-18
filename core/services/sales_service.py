@@ -345,6 +345,47 @@ class SalesService(BaseService):
             print(f"Delete failed: {e}")
             return False
 
+    def get_last_sale(self, store_id: int) -> Optional[dict]:
+        """
+        Get the last sale transaction for a store.
+        Returns a dict containing sale details and items.
+        """
+        from desktop_app.database import sales, sale_items
+        from sqlalchemy import select
+        
+        # Get last sale
+        stmt = select(sales).where(sales.c.store_id == store_id).order_by(sales.c.created_at.desc()).limit(1)
+        result = self.session.execute(stmt).fetchone()
+        
+        if not result:
+            return None
+            
+        sale_data = dict(result._mapping)
+        
+        # Get items for this sale
+        # We need to join with product details to get names
+        from desktop_app.database import products, product_batches
+        
+        # Determine items table - simplified, assuming sale_items exists and links to batches
+        # In a real scenario, we might need a more complex query if items are archived
+        
+        # Note: 'sale_items' is defined in models.py imports, so it should be available in database.py
+        
+        stmt_items = select(
+            sale_items.c.quantity,
+            sale_items.c.unit_price,
+            sale_items.c.total_price,
+            products.c.name.label('product_name')
+        ).select_from(
+            sale_items.join(product_batches, sale_items.c.product_batch_id == product_batches.c.id)
+                      .join(products, product_batches.c.product_id == products.c.id)
+        ).where(sale_items.c.sale_id == sale_data['id'])
+        
+        items_result = self.session.execute(stmt_items).fetchall()
+        sale_data['items'] = [dict(row._mapping) for row in items_result]
+        
+        return sale_data
+
 
 __all__ = [
     "ReceiptGenerator",

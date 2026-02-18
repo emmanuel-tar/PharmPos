@@ -155,6 +155,12 @@ class POSView(QWidget):
         
         action_bar.addWidget(self.hold_btn)
         action_bar.addWidget(self.recall_btn)
+        
+        self.reprint_btn = QPushButton("REPRINT LAST")
+        self.reprint_btn.setStyleSheet(f"background-color: {Theme.SECONDARY}; color: white; border-radius: 4px; padding: 6px; font-size: 10px; font-weight: bold;")
+        self.reprint_btn.clicked.connect(self.reprint_last_receipt)
+        action_bar.addWidget(self.reprint_btn)
+        
         action_bar.addWidget(self.clear_btn)
         cart_layout.addLayout(action_bar)
         
@@ -565,6 +571,51 @@ class POSView(QWidget):
             self.customer_btn.setStyleSheet(f"color: {Theme.PRIMARY}; font-weight: bold; font-size: 12px; border: 1px solid {Theme.PRIMARY}; padding: 4px 8px; border-radius: 4px;")
             self.update_cart_display()
             self.search_input.clear()
-            self.update_catalog([])
+            self.handle_search()
             QMessageBox.information(self, "Success", "Transaction finalized and bill closed.")
+
+    def reprint_last_receipt(self):
+        """Reprint the last finalized sale."""
+        try:
+            if not hasattr(self.sales_service, 'get_last_sale'):
+                QMessageBox.information(self, "Info", "Backend update required for reprint.")
+                return
+
+            sale_data = self.sales_service.get_last_sale(self.store_id)
+            if not sale_data:
+                QMessageBox.warning(self, "No Sales", "No recent sales found to reprint.")
+                return
+                
+            from desktop_app.printer import ThermalPrinter, PrinterType
+            printer = ThermalPrinter(printer_type=PrinterType.USB)
+            
+            # Format items for printer
+            items_for_print = []
+            for item in sale_data['items']:
+                items_for_print.append({
+                    "product_name": item['product_name'],
+                    "quantity": item['quantity'],
+                    "unit_price": float(item['unit_price'])
+                })
+                
+            amount_paid = float(sale_data['amount_paid'])
+            total = float(sale_data['total_amount'])
+            
+            printer.print_receipt(
+                receipt_number=f"{sale_data['receipt_number']} (COPY)",
+                store_name="PharmaPOS Store",
+                items=items_for_print,
+                subtotal=total,
+                tax=0.0,
+                total=total,
+                payment_method=sale_data['payment_method'].title(),
+                amount_paid=amount_paid,
+                change=float(sale_data['change_amount']),
+                cashier_name=f"User {sale_data['user_id']}"
+            )
+            QMessageBox.information(self, "Success", "Last receipt printed.")
+            
+        except Exception as e:
+            print(f"Reprint failed: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to reprint: {e}")
 

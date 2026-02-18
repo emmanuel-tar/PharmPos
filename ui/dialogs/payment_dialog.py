@@ -170,6 +170,42 @@ class PaymentDialog(QDialog):
         )
 
         if success:
+            # Print Receipt
+            try:
+                from desktop_app.printer import ThermalPrinter, PrinterType
+                
+                # TODO: storing printer config in settings would be better
+                # For now, we default to USB or fall back to FILE for testing
+                printer = ThermalPrinter(printer_type=PrinterType.USB)
+                
+                # If USB fails or not connected, it might print to file or stderr
+                # In a real scenario, we might want to check connection first
+                
+                # Calculate tax/subtotal for receipt (simplified)
+                subtotal = sum(i['unit_price'] * i['quantity'] for i in final_items)
+                tax = 0.0 # Pharma items often tax-exempt or inclusive
+                total = float(subtotal) + tax
+                
+                printer.print_receipt(
+                    receipt_number=sale_data['receipt_number'],
+                    store_name="PharmaPOS Store", 
+                    items=[{
+                        "product_name": item.get('name', 'Unknown Item'),
+                        "quantity": item['quantity'],
+                        "unit_price": float(item['price'])
+                    } for item in self.cart],
+                    subtotal=float(self.total_amount),
+                    tax=0.0,
+                    total=float(amount_paid) if method == "cash" else float(self.total_amount),
+                    payment_method=method.title(),
+                    amount_paid=float(amount_paid),
+                    change=float(amount_paid - self.total_amount) if method == "cash" else 0.0,
+                    cashier_name=f"User {self.user_id}"
+                )
+            except Exception as e:
+                print(f"Printing failed: {e}")
+                QMessageBox.warning(self, "Printing Error", f"Could not print receipt: {e}")
+
             QMessageBox.information(self, "Success", f"Sale Completed!\nReceipt #: {sale_data['receipt_number']}")
             self.accept()
         else:

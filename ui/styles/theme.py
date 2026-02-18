@@ -21,6 +21,7 @@ class Theme:
     PRIMARY = "#6366F1"           # Indigo 500
     PRIMARY_HOVER = "#4F46E5"     # Indigo 600
     PRIMARY_LIGHT = "#EEF2FF"     # Indigo 50
+    SECONDARY = "#64748B"         # Slate 500 (Secondary action)
     
     # Status Colors (Modern & Accessible)
     SUCCESS = "#10B981"           # Emerald 500 (Pharma feel)
