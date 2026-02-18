@@ -74,6 +74,7 @@ class ThermalPrinter:
         vendor_id: int = 0x04b8,  # Epson default
         product_id: int = 0x0202,
         output_file: str = None,
+        backend: Dict[str, Any] = None, # Added backend support
     ):
         """
         Initialize thermal printer connection.
@@ -87,7 +88,39 @@ class ThermalPrinter:
             vendor_id: USB vendor ID (for USB type)
             product_id: USB product ID (for USB type)
             output_file: Output file path (for FILE type)
+            backend: Config dictionary (type + device_info)
         """
+        if backend:
+            # Parse backend and device_info
+            try:
+                printer_type = PrinterType(backend.get("type", "FILE"))
+            except ValueError:
+                printer_type = PrinterType.FILE
+
+            device_info = backend.get("device_info", {})
+            if printer_type == PrinterType.USB:
+                vendor_id_str = device_info.get("vendor_id", "0x04b8")
+                product_id_str = device_info.get("product_id", "0x0202")
+                # Parse hex strings
+                if isinstance(vendor_id_str, str) and vendor_id_str.startswith("0x"):
+                    vendor_id = int(vendor_id_str, 16)
+                else: 
+                     vendor_id = int(vendor_id_str)
+                     
+                if isinstance(product_id_str, str) and product_id_str.startswith("0x"):
+                    product_id = int(product_id_str, 16)
+                else:
+                    product_id = int(product_id_str)
+
+            elif printer_type == PrinterType.SERIAL:
+                port = device_info.get("port", "/dev/ttyUSB0")
+                baudrate = int(device_info.get("baudrate", 9600))
+            elif printer_type == PrinterType.NETWORK:
+                host = device_info.get("host", "192.168.1.100")
+                port_num = int(device_info.get("port", 9100))
+            elif printer_type == PrinterType.FILE:
+                # Add support for file output path if needed or implicit
+                pass
         self.printer_type = printer_type
         self.connection = None
         self.is_connected = False

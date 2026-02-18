@@ -586,8 +586,21 @@ class POSView(QWidget):
                 QMessageBox.warning(self, "No Sales", "No recent sales found to reprint.")
                 return
                 
-            from desktop_app.printer import ThermalPrinter, PrinterType
-            printer = ThermalPrinter(printer_type=PrinterType.USB)
+            from desktop_app.printer import ThermalPrinter
+            from desktop_app.config import get_printer_backend, get_printer_device_info
+            
+            backend_type = get_printer_backend()
+            if not backend_type:
+                 QMessageBox.information(self, "Info", "Printing is disabled in settings.")
+                 return
+
+            device_info = get_printer_device_info(backend_type)
+            backend_config = {
+                "type": backend_type,
+                "device_info": device_info
+            }
+            
+            printer = ThermalPrinter(backend=backend_config)
             
             # Format items for printer
             items_for_print = []
